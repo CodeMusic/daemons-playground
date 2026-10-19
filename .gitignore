@@ -1,0 +1,6 @@
+.DS_Store
+__pycache__/
+# the ROMs are DAEMONS', read from ../DAEMONS/ROM RELEASE at the moment they are asked for -- never kept here
+*.gba
+*.sav
+*.srm

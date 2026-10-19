@@ -1,0 +1,506 @@
+<!doctype html>
+<!-- The DAEMONS playground (DAEMONS T-428, the user 2026-10-19: "This would make it easy to demo all the parts of a
+     game just by going to a url"): the edition, DEBUG or not, a save to start from or a new game; the game played here,
+     its save kept and downloaded; the companion and each release's notes in tabs beside it. Served by
+     server/playground.py, which reads the ROMs from DAEMONS' ROM RELEASE and keeps them on this machine's network. The
+     emulator is EmulatorJS's mGBA core, loaded from EmulatorJS's own CDN: nothing of it is kept in this repository. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DAEMONS Playground</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --line: #2a2f3a; --text: #e8e6e3; --dim: #9aa0aa;
+    --content: #e07a5f; --context: #81b29a; --accent: var(--content);
+    color-scheme: dark;
+  }
+  body.context { --accent: var(--context); }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--text); font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  [hidden] { display: none !important; }
+
+  /* the chooser */
+  #choose { max-width: 560px; margin: 0 auto; padding: 32px 16px 48px; }
+  h1 { font-size: 34px; letter-spacing: .14em; margin: 0; }
+  .sub { color: var(--dim); margin: 4px 0 28px; }
+  fieldset { border: 0; padding: 0; margin: 0 0 18px; }
+  legend { color: var(--dim); font-size: 13px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 8px; }
+  .editions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .card { position: relative; display: block; background: var(--panel); border: 2px solid var(--line); border-radius: 12px;
+          padding: 16px; cursor: pointer; }
+  .card input { position: absolute; opacity: 0; pointer-events: none; }
+  .card b { display: block; font-size: 20px; letter-spacing: .1em; }
+  .card small { color: var(--dim); }
+  .card.content:has(input:checked) { border-color: var(--content); }
+  .card.context:has(input:checked) { border-color: var(--context); }
+  .card:has(input:focus-visible) { outline: 2px solid var(--text); outline-offset: 2px; }
+  .card:has(input:disabled) { opacity: .4; cursor: not-allowed; }
+  .row { display: flex; gap: 12px; align-items: flex-start; background: var(--panel); border: 1px solid var(--line);
+         border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; }
+  .row input[type=checkbox] { width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--accent); }
+  .row small { display: block; color: var(--dim); }
+  .row .grow { flex: 1; min-width: 0; }
+  .file { display: inline-block; border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; margin-top: 8px; }
+  .file input { display: none; }
+  #saveinfo { margin: 6px 0 0; word-break: break-word; }
+  #saveinfo.warn { color: #e9c46a; }
+  .link { background: none; border: 0; padding: 0; color: var(--dim); text-decoration: underline; }
+  #play { width: 100%; margin-top: 12px; padding: 14px; font-size: 18px; font-weight: 700; letter-spacing: .12em;
+          background: var(--accent); color: #111; border: 0; border-radius: 12px; }
+  #play:disabled { opacity: .5; cursor: wait; }
+  .note { color: var(--dim); font-size: 14px; margin-top: 16px; }
+  kbd { font: 12px/1 ui-monospace, Menlo, monospace; border: 1px solid var(--line); border-radius: 4px; padding: 2px 5px;
+        color: var(--text); }
+
+  /* the game */
+  #screen { display: flex; flex-direction: column; height: 100%; }
+  .bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 12px; background: var(--panel);
+         border-bottom: 1px solid var(--line); }
+  .tabs { display: flex; gap: 4px; }
+  .tabs button { background: none; border: 1px solid transparent; border-radius: 8px; padding: 6px 12px;
+                 font-weight: 700; letter-spacing: .08em; color: var(--dim); }
+  .tabs button[aria-selected=true] { color: var(--text); border-color: var(--accent); }
+  #what { color: var(--dim); font-size: 14px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .actions { display: flex; gap: 8px; }
+  .actions button { background: none; border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; }
+  .actions button.main { border-color: var(--accent); }
+  .pane { flex: 1; min-height: 0; position: relative; }
+  #game { width: 100%; height: 100%; }
+  #companion { width: 100%; height: 100%; border: 0; background: #fff; }
+  #companion-down { max-width: 520px; margin: 48px auto; padding: 0 16px; color: var(--dim); }
+  #companion-down code { color: var(--text); }
+  #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: calc(100% - 32px);
+           background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 16px; z-index: 10; }
+
+  /* what's new: each release's notes, as DAEMONS writes them */
+  .news { margin-top: 32px; border-top: 1px solid var(--line); padding-top: 8px; }
+  .news h2 { font-size: 13px; color: var(--dim); letter-spacing: .08em; text-transform: uppercase; }
+  .pane.scroll { overflow-y: auto; }
+  #news-all { max-width: 760px; margin: 0 auto; padding: 16px; }
+  .notes h3 { font-size: 18px; margin: 20px 0 4px; }
+  .notes h4 { font-size: 14px; color: var(--dim); letter-spacing: .04em; margin: 16px 0 6px; }
+  .notes p, .notes li { font-size: 14px; }
+  .notes ul { padding-left: 20px; margin: 6px 0; }
+  .notes li { margin: 3px 0; }
+  .notes code { font: 12px ui-monospace, Menlo, monospace; color: var(--dim); }
+  .notes a { color: var(--dim); }
+  .notes table { display: block; overflow-x: auto; border-collapse: collapse; font-size: 13px; margin: 8px 0; }
+  .notes th, .notes td { border-bottom: 1px solid var(--line); padding: 4px 8px; text-align: left; white-space: nowrap; }
+  .notes hr { border: 0; border-top: 1px solid var(--line); margin: 24px 0; }
+  details summary { cursor: pointer; color: var(--dim); margin: 12px 0; }
+  #newer { position: fixed; top: 56px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 32px); z-index: 5;
+           background: var(--panel); border: 1px solid var(--accent); border-radius: 10px; padding: 10px 16px; }
+
+  dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 14px;
+           max-width: min(440px, calc(100% - 32px)); padding: 20px; }
+  dialog::backdrop { background: rgba(0, 0, 0, .6); }
+  dialog h2 { margin: 0 0 8px; font-size: 18px; }
+  dialog p { color: var(--dim); margin: 0 0 16px; }
+  dialog .choices { display: flex; flex-direction: column; gap: 8px; }
+  dialog .choices button { padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: none; }
+  dialog .choices button.main { background: var(--accent); color: #111; border: 0; font-weight: 700; }
+
+  @media (max-width: 520px) {
+    .editions { grid-template-columns: 1fr; }
+    .actions button { padding: 6px 8px; font-size: 14px; }
+    #what { order: 3; flex-basis: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<main id="choose">
+  <h1>DAEMONS</h1>
+  <p class="sub">Playground · <span id="release">…</span></p>
+
+  <fieldset>
+    <legend>Edition</legend>
+    <div class="editions">
+      <label class="card content"><input type="radio" name="edition" value="content" checked>
+        <b>CONTENT</b><small>firered</small></label>
+      <label class="card context"><input type="radio" name="edition" value="context">
+        <b>CONTEXT</b><small>leafgreen</small></label>
+    </div>
+  </fieldset>
+
+  <label class="row"><input type="checkbox" id="debug">
+    <span class="grow"><b>DEBUG build</b>
+      <small>Its own save. A new debug game starts as a normal one; DEBUG → GAME EVENTS hands out the kit.</small></span></label>
+
+  <div class="row">
+    <span class="grow"><b>Start from a save</b> <small>Optional. Without one, a new game.</small>
+      <label class="file">Choose a .sav<input type="file" id="savefile" accept=".sav,.srm"></label>
+      <p id="saveinfo"><small>No save chosen.</small></p></span>
+  </div>
+
+  <button id="play" disabled>PLAY</button>
+  <p class="note">The game's own SAVE (START, then SAVE) is kept in this browser between visits. Download it from the
+    game screen to keep it, or to load it in mGBA, Delta or on the cart.</p>
+  <p class="note keys"><b>Keys</b> · arrows move · <kbd>Z</kbd> A · <kbd>X</kbd> B · <kbd>Enter</kbd> START ·
+    <kbd>V</kbd> SELECT · <kbd>Q</kbd> <kbd>E</kbd> L and R · on a phone, the buttons on the screen. Change them with the
+    controller button under the game (Control Settings).</p>
+
+  <section class="news" id="news" hidden>
+    <h2>What's new</h2>
+    <div id="news-latest" class="notes"></div>
+    <details id="news-older" hidden><summary>Earlier releases</summary><div class="notes"></div></details>
+  </section>
+</main>
+
+<div id="screen" hidden>
+  <nav class="bar">
+    <div class="tabs" role="tablist">
+      <button role="tab" id="tab-game" aria-selected="true" aria-controls="game-pane">GAME</button>
+      <button role="tab" id="tab-companion" aria-selected="false" aria-controls="companion-pane">COMPANION</button>
+      <button role="tab" id="tab-news" aria-selected="false" aria-controls="news-pane">WHAT'S NEW</button>
+    </div>
+    <span id="what"></span>
+    <div class="actions">
+      <button id="download" class="main">Download save</button>
+      <button id="change">Change game</button>
+    </div>
+  </nav>
+  <section class="pane" id="game-pane" role="tabpanel"><div id="game"></div></section>
+  <section class="pane" id="companion-pane" role="tabpanel" hidden>
+    <iframe id="companion" title="The DAEMONS companion" hidden></iframe>
+    <div id="companion-down" hidden>
+      <p>The companion's site isn't answering at <code id="companion-url"></code>.</p>
+      <p>Start it on the Mac with <code>./companion/bindCompanion.sh</code>, then
+        <button class="link" id="companion-retry">try again</button>.</p>
+    </div>
+  </section>
+  <section class="pane scroll" id="news-pane" role="tabpanel" hidden><div class="notes" id="news-all"></div></section>
+  <div id="newer" hidden>
+    <span id="newer-text"></span>
+    <button class="link" id="newer-close">dismiss</button>
+  </div>
+</div>
+
+<dialog id="kept">
+  <h2>This browser kept a save</h2>
+  <p id="kept-text"></p>
+  <div class="choices">
+    <button class="main" id="kept-continue">Continue it</button>
+    <button id="kept-download">Download it</button>
+    <button id="kept-new">Start a new game</button>
+  </div>
+</dialog>
+
+<div id="toast" role="status" hidden></div>
+
+<script>
+"use strict";
+const CDN = "https://cdn.emulatorjs.org/4.2.3/data/";
+const NAMES = { content: "daemonsContent", context: "daemonsContext" };
+const SAVE_SIZE = 131072;                      // FireRed's flash: 128 KB, erased to 0xFF
+const $ = (id) => document.getElementById(id);
+let info = null, save = null, saveName = "", game = null, started = false;
+
+// ---- the chooser ----------------------------------------------------------------------------------------------------
+function remembered() { try { return JSON.parse(localStorage.getItem("daemons-playground") || "{}"); } catch { return {}; } }
+function remember(v) { try { localStorage.setItem("daemons-playground", JSON.stringify(v)); } catch { /* a private window */ } }
+function chosen() {
+  return { edition: document.querySelector("input[name=edition]:checked").value, debug: $("debug").checked };
+}
+function shade() { document.body.classList.toggle("context", chosen().edition === "context"); }
+function available() {
+  const { edition, debug } = chosen(), ok = info && info.editions.includes(edition + (debug ? "_debug" : ""));
+  $("play").disabled = !ok;
+  $("play").textContent = !info ? "…" : !ok ? "NOT IN THIS RELEASE" : save ? "CONTINUE FROM SAVE" : "NEW GAME";
+}
+
+async function boot() {
+  const r = remembered();
+  if (r.edition) document.querySelector(`input[name=edition][value=${r.edition === "context" ? "context" : "content"}]`).checked = true;
+  $("debug").checked = !!r.debug;
+  shade();
+  try {
+    info = await (await fetch("info.json", { cache: "no-store" })).json();
+    $("release").textContent = info.release === "build" ? "engineGba's own build" : info.release;
+  } catch {
+    $("release").textContent = "the server isn't answering";
+  }
+  available();
+  loadNotes();
+}
+
+document.querySelectorAll("input[name=edition]").forEach((i) => i.addEventListener("change", () => { shade(); available(); }));
+$("debug").addEventListener("change", available);
+$("savefile").addEventListener("change", async (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  save = new Uint8Array(await f.arrayBuffer());
+  saveName = f.name;
+  const odd = save.length !== SAVE_SIZE && save.length !== SAVE_SIZE + 16;   // mGBA adds a 16-byte clock after the flash
+  $("saveinfo").className = odd ? "warn" : "";
+  $("saveinfo").innerHTML = "";
+  $("saveinfo").append(`${f.name} · ${(save.length / 1024).toFixed(0)} KB` +
+    (odd ? ` -- a DAEMONS save is 128 KB; it will be tried anyway. ` : " "));
+  const clear = Object.assign(document.createElement("button"), { className: "link", textContent: "clear" });
+  clear.onclick = () => { save = null; saveName = ""; e.target.value = ""; $("saveinfo").className = "";
+                          $("saveinfo").innerHTML = "<small>No save chosen.</small>"; available(); };
+  $("saveinfo").append(clear);
+  available();
+});
+
+$("play").addEventListener("click", () => {
+  const { edition, debug } = chosen();
+  remember({ edition, debug });
+  game = { edition, debug, base: NAMES[edition] + (debug ? "_debug" : "") };
+  $("choose").hidden = true;
+  $("screen").hidden = false;
+  what(save ? "from " + saveName : "new game");
+  Object.assign(window, {
+    EJS_player: "#game",
+    EJS_core: "gba",
+    EJS_gameUrl: `rom/${encodeURIComponent(info.release)}/${game.base}.gba`,
+    EJS_gameName: game.base,
+    EJS_pathtodata: CDN,
+    EJS_startOnLoaded: true,                   // the PLAY press is the gesture the browser's sound waits for
+    EJS_color: getComputedStyle(document.body).getPropertyValue("--accent").trim(),
+    EJS_backgroundColor: "#0f1115",
+    EJS_Buttons: { netplay: false, exitEmulation: false },
+    EJS_onGameStart: onStart,
+  });
+  const s = document.createElement("script");
+  s.src = CDN + "loader.js";
+  s.onerror = () => toast("EmulatorJS didn't load from its CDN -- is this machine online?", 10000);
+  document.body.append(s);
+});
+
+// ---- the save: put in at the start, kept while it is played, taken out on DOWNLOAD ----------------------------------
+// EmulatorJS keeps the game's save in IndexedDB too, but empties it when the page is left (found 2026-10-19: /data/saves
+// had nothing in it after a reload). So this page keeps its own copy of each build's save -- looked at every five
+// seconds and as the page is hidden or left, written when it has changed -- and at the next start offers it rather than
+// silently continuing it, or silently losing it. Whatever the game starts from is written in and the game restarted.
+function manager() { return window.EJS_emulator && window.EJS_emulator.gameManager; }
+function blank(b) { return !b || !b.length || b.every((x) => x === 0xFF) || b.every((x) => x === 0); }
+function same(a, b) { return !!a && !!b && a.length === b.length && a.every((x, i) => x === b[i]); }
+const store = {
+  db: null,
+  open() {
+    return this.db || (this.db = new Promise((res, rej) => {
+      const r = indexedDB.open("daemons-playground", 1);
+      r.onupgradeneeded = () => r.result.createObjectStore("saves");
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    }));
+  },
+  async get(key) {
+    try {
+      const db = await this.open();
+      return await new Promise((res) => {
+        const q = db.transaction("saves").objectStore("saves").get(key);
+        q.onsuccess = () => res(q.result || null);
+        q.onerror = () => res(null);
+      });
+    } catch { return null; }                   // a private window: nothing kept
+  },
+  async put(key, value) {
+    try {
+      const db = await this.open();
+      await new Promise((res) => {
+        const tx = db.transaction("saves", "readwrite");
+        tx.objectStore("saves").put(value, key);
+        tx.oncomplete = tx.onerror = tx.onabort = res;
+      });
+    } catch { /* not kept; DOWNLOAD still works */ }
+  },
+};
+let last = null, keptSave = null;
+function keep() {
+  const g = manager();
+  if (!g || !game) return Promise.resolve();
+  const b = g.getSaveFile();                   // the game's save memory, written out first
+  if (blank(b) || same(b, last)) return Promise.resolve();
+  last = b.slice();
+  return store.put(game.base, { bytes: last, at: Date.now(), release: info.release });
+}
+function putSave(bytes) {
+  const g = manager(), p = g.getSaveFilePath();
+  let dir = "";
+  for (const part of p.split("/").slice(0, -1).filter(Boolean)) {
+    dir += "/" + part;
+    if (!g.FS.analyzePath(dir).exists) g.FS.mkdir(dir);
+  }
+  if (g.FS.analyzePath(p).exists) g.FS.unlink(p);
+  g.FS.writeFile(p, bytes);
+  g.loadSaveFiles();
+  g.restart();
+}
+async function onStart() {
+  if (started) return;
+  started = true;
+  setInterval(keep, 5000);
+  setInterval(checkNewer, 120000);
+  if (save) { putSave(save); last = save; toast("Started from " + saveName); return; }
+  keptSave = await store.get(game.base);
+  if (!keptSave || blank(keptSave.bytes)) { putSave(new Uint8Array(SAVE_SIZE).fill(0xFF)); return; }
+  window.EJS_emulator.pause();
+  $("kept-text").textContent = `From your last ${game.edition.toUpperCase()}${game.debug ? " DEBUG" : ""} game here, ` +
+    `saved ${new Date(keptSave.at).toLocaleString()}${keptSave.release ? " on " + keptSave.release : ""}. ` +
+    "Continue it, or start a new game in its place.";
+  $("kept").showModal();
+}
+function what(from) {
+  $("what").textContent = [game.edition.toUpperCase(), game.debug ? "DEBUG" : null,
+                           info.release === "build" ? "engineGba build" : info.release, from].filter(Boolean).join(" · ");
+}
+$("kept-continue").onclick = () => {
+  $("kept").close();
+  what("this browser's save of " + new Date(keptSave.at).toLocaleDateString());
+  putSave(keptSave.bytes);
+  last = keptSave.bytes;
+  window.EJS_emulator.play();
+};
+$("kept-download").onclick = () => downloadBytes(keptSave.bytes);
+$("kept-new").onclick = () => {
+  if (!confirm("Start a new game? The kept save is replaced the first time the new game is saved -- download it first if you want it.")) return;
+  $("kept").close();
+  putSave(new Uint8Array(SAVE_SIZE).fill(0xFF));
+  window.EJS_emulator.play();
+};
+document.addEventListener("visibilitychange", () => { if (document.hidden) keep(); });
+addEventListener("pagehide", () => { keep(); });
+$("kept").addEventListener("cancel", (e) => e.preventDefault());   // one of the three, not Escape
+
+function stamp() {
+  const d = new Date(), p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
+}
+function downloadBytes(bytes) {
+  if (blank(bytes)) { toast("Nothing saved yet -- save in the game first (START, then SAVE)."); return; }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
+  a.download = `${game.base}-${stamp()}.sav`;
+  document.body.append(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+$("download").onclick = () => {
+  if (!manager()) { toast("The game hasn't started yet."); return; }
+  downloadBytes(manager().getSaveFile());      // the game's save memory, written out first
+  keep();
+};
+$("change").onclick = async () => {
+  if (!confirm("Leave this game? Its last save stays in this browser; download it to keep a copy elsewhere.")) return;
+  await keep();
+  leaving = true;
+  location.reload();
+};
+let leaving = false;
+addEventListener("beforeunload", (e) => { if (game && !leaving) { e.preventDefault(); e.returnValue = ""; } });
+
+// ---- the tabs ---------------------------------------------------------------------------------------------------------
+// The game pauses while another tab is shown, and goes on as it was when it comes back.
+const companionUrl = () => (info && info.companion) || `${location.protocol}//${location.hostname}:8081/`;
+const TABS = ["game", "companion", "news"];
+let pausedByTab = false;
+function show(tab) {
+  for (const t of TABS) {
+    $("tab-" + t).setAttribute("aria-selected", String(t === tab));
+    $(t + "-pane").hidden = t !== tab;
+  }
+  const emu = window.EJS_emulator;
+  if (tab !== "game") {
+    if (emu && !emu.paused) { emu.pause(); pausedByTab = true; }
+    if (tab === "companion") openCompanion();
+  } else if (emu && pausedByTab) {
+    pausedByTab = false;
+    emu.play();
+  }
+}
+async function openCompanion() {
+  const url = companionUrl(), frame = $("companion");
+  if (frame.src) return;
+  $("companion-url").textContent = url;
+  try {
+    await fetch(url, { mode: "no-cors", cache: "no-store" });   // any answer at all
+  } catch {
+    $("companion-down").hidden = false;
+    return;
+  }
+  $("companion-down").hidden = true;
+  frame.hidden = false;
+  frame.src = url;
+}
+for (const t of TABS) $("tab-" + t).onclick = () => show(t);
+$("companion-retry").onclick = openCompanion;
+
+// ---- what's new: each release's notes (DAEMONS' RELEASE_NOTES.md), the newest first --------------------------------
+// The notes are a little markdown -- headings, lists, tables, `code`, **bold**, *italic* -- so a little reader. A commit
+// named at the start of a line links to it: the engine's under "The engine since", DAEMONS' under the rest.
+const REPOS = { engine: "https://github.com/CodeMusic/pokefirered-daemons/commit/",
+                design: "https://github.com/CodeMusic/DAEMONS/commit/" };
+function md(text) {
+  const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const inline = (s) => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/\*([^*]+)\*/g, "<i>$1</i>");
+  const out = [];
+  let list = false, rows = null, repo = REPOS.design;
+  const close = () => {
+    if (list) { out.push("</ul>"); list = false; }
+    if (rows) { out.push("<table>" + rows.join("") + "</table>"); rows = null; }
+  };
+  for (const line of text.split("\n")) {
+    let m;
+    if ((m = line.match(/^(#{1,3}) (.*)/))) {
+      close();
+      if (m[1].length === 2) repo = /engine/i.test(m[2]) ? REPOS.engine : REPOS.design;
+      out.push(`<h${m[1].length + 2}>${inline(m[2])}</h${m[1].length + 2}>`);
+    } else if ((m = line.match(/^- (.*)/))) {
+      if (rows) close();
+      if (!list) { out.push("<ul>"); list = true; }
+      out.push("<li>" + inline(m[1]).replace(/^<code>([0-9a-f]{7,12})<\/code>/,
+        (_, sha) => `<a href="${repo}${sha}" target="_blank" rel="noopener"><code>${sha}</code></a>`) + "</li>");
+    } else if (line.startsWith("|")) {
+      if (list) close();
+      const cells = line.replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
+      if (cells.every((c) => /^-+$/.test(c))) continue;
+      const tag = rows ? "td" : "th";
+      (rows = rows || []).push("<tr>" + cells.map((c) => `<${tag}>${inline(c)}</${tag}>`).join("") + "</tr>");
+    } else if (!line.trim()) close();
+    else { close(); out.push(`<p>${inline(line)}</p>`); }
+  }
+  close();
+  return out.join("");
+}
+async function loadNotes() {
+  let all = [];
+  try { all = await (await fetch("notes.json", { cache: "no-store" })).json(); } catch { return; }
+  if (!all.length) return;
+  $("news").hidden = false;
+  $("news-latest").innerHTML = md(all[0].notes);
+  $("news-older").hidden = all.length < 2;
+  $("news-older").querySelector(".notes").innerHTML = all.slice(1).map((n) => md(n.notes)).join("<hr>");
+  $("news-all").innerHTML = all.map((n) => md(n.notes)).join("<hr>");
+}
+
+// ---- a newer release, while a game is being played: said, never forced -----------------------------------------------
+async function checkNewer() {
+  try {
+    const now = await (await fetch("info.json", { cache: "no-store" })).json();
+    if (!now.release || now.release === info.release || $("newer").dataset.seen === now.release) return;
+    $("newer").dataset.seen = now.release;
+    $("newer-text").textContent = `${now.release} is out. Download your save, then Change game to play it. `;
+    $("newer").hidden = false;
+    loadNotes();
+  } catch { /* the server is away for a moment */ }
+}
+$("newer-close").onclick = () => { $("newer").hidden = true; };
+
+let toastTimer = 0;
+function toast(text, ms = 4000) {
+  $("toast").textContent = text;
+  $("toast").hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { $("toast").hidden = true; }, ms);
+}
+
+boot();
+</script>
+</body>
+</html>
