@@ -70,7 +70,7 @@
   .pane { flex: 1; min-height: 0; position: relative; }
   #game { width: 100%; height: 100%; }
   #companion { width: 100%; height: 100%; border: 0; background: #fff; }
-  #companion-down, #companion-wait { max-width: 520px; margin: 48px auto; padding: 0 16px; color: var(--dim); }
+  #companion-down, #companion-wait, #companion-building { max-width: 520px; margin: 48px auto; padding: 0 16px; color: var(--dim); }
   #companion-down code { color: var(--text); }
   #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: calc(100% - 32px);
            background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 16px; z-index: 10; }
@@ -167,8 +167,10 @@
   <section class="pane" id="companion-pane" role="tabpanel" hidden>
     <iframe id="companion" title="The DAEMONS companion" hidden></iframe>
     <p id="companion-wait" hidden>SYNC…</p>
+    <p id="companion-building" hidden>Making the companion's site (the first time, about a minute)…</p>
     <div id="companion-down" hidden>
       <p>The companion's site isn't answering at <code id="companion-url"></code>.</p>
+      <p id="companion-why" hidden>The playground has no site of its own to show: <span></span>.</p>
       <p>Start it on the Mac with <code>./companion/bindCompanion.sh app</code> (the site alone: the playground runs
         its own companion behind it), then <button class="link" id="companion-retry">try again</button>.</p>
     </div>
@@ -414,7 +416,8 @@ addEventListener("beforeunload", (e) => { if (game && !leaving) { e.preventDefau
 // it -- links it the first time, takes a daemon the game SENT, brings one home -- and when that writes the save, the save
 // goes back into the game, which starts again from it (the game is closed while the app edits its save, as on a cart).
 // A SYNC pressed in the companion's own site does the same: its save is watched while the tab is open. The site is the
-// companion's own (port 8081), told by ?server= to use the playground's companion, through this server.
+// companion's own, exported by the playground and served from this origin (/companion-site/; --companion names another,
+// and with no export it is this host's Expo dev server, 8081), told by ?server= to use the playground's companion.
 let posted = null, postedSha = null, syncedSha = null, restartedBy = null, watching = 0;
 async function post(b) {
   try {
@@ -483,7 +486,8 @@ $("married").addEventListener("cancel", (e) => e.preventDefault());
 // ---- the tabs ---------------------------------------------------------------------------------------------------------
 // The game pauses while another tab is shown, and goes on as it was when it comes back.
 function companionUrl() {
-  const u = new URL((info && info.companion) || `${location.protocol}//${location.hostname}:8081/`, location.href);
+  const site = (info && (info.companion || info.companionSite)) || `${location.protocol}//${location.hostname}:8081/`;
+  const u = new URL(site, location.href);
   if (info && info.companions && game) u.searchParams.set("server", `${location.origin}/companion/${game.build}`);
   return u.href;
 }
@@ -525,10 +529,30 @@ async function openCompanion() {
   }
   loadCompanion(moved);
 }
+let siteTimer = 0;
 async function loadCompanion(again) {
-  const url = companionUrl(), frame = $("companion");
+  const frame = $("companion");
   if (frame.src && !again) return;
+  clearTimeout(siteTimer);
+  if (!info.companion) {
+    // the playground's own export of the site: made as it starts (and again when the companion changes), so it may be
+    // there now that was not when this page came up -- or still being made the first time
+    try {
+      const now = await (await fetch("info.json", { cache: "no-store" })).json();
+      info.companionSite = now.companionSite;
+      info.companionSiteWhy = now.companionSiteWhy;
+    } catch { /* the server is away for a moment: as it was */ }
+    $("companion-building").hidden = info.companionSiteWhy !== "building";
+    if (info.companionSiteWhy === "building") {
+      siteTimer = setTimeout(() => { if (!$("companion-pane").hidden) loadCompanion(again); }, 3000);
+      return;
+    }
+  }
+  const url = companionUrl();
   $("companion-url").textContent = url;
+  const why = !info.companion && !info.companionSite && info.companionSiteWhy;
+  $("companion-why").hidden = !why;
+  $("companion-why").querySelector("span").textContent = why || "";
   try {
     await fetch(url, { mode: "no-cors", cache: "no-store" });   // any answer at all
   } catch {

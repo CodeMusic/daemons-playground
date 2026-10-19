@@ -5,7 +5,7 @@
     python3 server/playground.py              the latest ROM RELEASE in ../DAEMONS
     python3 server/playground.py --build      DAEMONS' engineGba build instead (what ./bindDaemons.sh last made)
     python3 server/playground.py --port 8000
-    python3 server/playground.py --companion http://other-mac.local:8081/   the COMPANION tab (default: this host, 8081)
+    python3 server/playground.py --companion http://localhost:8081/   the COMPANION tab's site (default: its own export)
     python3 server/playground.py --no-companion       the tab on its site's own server, not the playground's companion
 
 The page (site/index.html) asks for the edition, DEBUG or not, and a .sav to start from (or none: a new game); plays it
@@ -21,6 +21,14 @@ DAEMONS, linked as DAEMONS/companion), started the first time its build asks for
 on this machine only: the companion's site reaches it through this server, at /companion/<build>/, so a phone on the
 tailnet uses it with no pairing -- and what only the Mac may do (pairing, its dialogs, the network, the save's path)
 is refused here. --no-companion leaves the tab on the companion site's own server, as before.
+
+THE COMPANION'S SITE IS THE PLAYGROUND'S OWN TOO: a static web export of daemons-companion's app (expo export --platform
+web, into data/companion-site/), made as this starts and again whenever the companion's HEAD or what is uncommitted in
+its app/, server/src or server/data has changed since the last one, and served from here -- /companion-site/, the page's
+own origin, so the tab needs no Expo dev server and a phone loads one minified bundle. The export names its files from
+the root (/_expo/..., /assets/...; its app.json sets no baseUrl), and this site has neither, so they are served there.
+--companion URL shows another site instead (the Expo dev server's, http://localhost:8081/, to work on the companion);
+with no export to be had -- no app installed, no Node, or the export failed -- the tab falls back to this host's 8081.
 
 THE ROMS ARE NOT IN THIS REPOSITORY, AND NEVER LEAVE THIS MACHINE'S NETWORK. They are read from DAEMONS' ROM RELEASE/
 (beside this repository: ../DAEMONS, or $DAEMONS_ROOT) at the moment they are asked for -- the newest release each time,
@@ -284,6 +292,139 @@ class Companions:
             self.stop(build)
 
 
+SITE_EXPORT = os.path.join(DATA, "companion-site")   # the companion's site, exported; .json beside it says from what
+SITE_PREFIX = "/companion-site"
+SITE_ROOTS = ("/_expo/", "/assets/")                  # what the export names from the root: this site has neither
+
+
+class CompanionSite:
+    """daemons-companion's app as a static site (expo export --platform web) in data/companion-site/, so the COMPANION
+    tab needs no Expo dev server. Exported as this starts, and again -- in the background, the old one served meanwhile
+    -- when the companion has changed since the last export: its HEAD, or anything uncommitted in what the site is built
+    from (app/, and server/src and server/data, which its Metro config reads as well). An export that failed is not
+    tried again until the companion changes."""
+
+    WATCHED = ("app", "server/src", "server/data")
+
+    def __init__(self, enabled):
+        self.enabled = enabled
+        self.node = find_node() if enabled else None
+        self.lock, self.building, self.checked, self.failed, self.failed_for = threading.Lock(), False, 0.0, None, None
+
+    def why_not(self):
+        """Why the playground cannot export the site, or None."""
+        if not self.enabled:
+            return "--companion"
+        app = os.path.join(COMPANION, "app")
+        if not os.path.isfile(os.path.join(app, "app.json")):
+            return f"no daemons-companion app at {app} (DAEMONS' setup.sh links the companion as DAEMONS/companion)"
+        if not os.path.isfile(os.path.join(app, "node_modules", "expo", "bin", "cli")):
+            return f"the companion's app has not been installed: npm install in {app}"
+        if not self.node:
+            return "no Node 24 (or 22.13 or later) for the companion's app: brew install node@24"
+        return None
+
+    def fingerprint(self):
+        """{head, digest, dirty}: the companion's HEAD, and the size and time of everything uncommitted that the site is
+        built from -- or None when git cannot say."""
+        try:
+            git = lambda *a: subprocess.run(["git", "--no-optional-locks", "-C", COMPANION, *a], capture_output=True,
+                                            timeout=20, check=True).stdout
+            head = git("rev-parse", "HEAD").decode().strip()
+            status = git("status", "--porcelain", "-z", "--untracked-files=all", "--", *self.WATCHED)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        h, dirty, items = hashlib.sha1(head.encode()), False, iter(status.split(b"\0"))
+        for item in items:
+            if not item:
+                continue
+            dirty, path = True, item[3:].decode(errors="replace")
+            if item[:1] in (b"R", b"C"):
+                next(items, None)                           # a rename's old name follows it
+            try:
+                st = os.stat(os.path.join(COMPANION, path))
+                h.update(f"{item[:2]!r} {path} {st.st_size} {st.st_mtime_ns}\n".encode())
+            except OSError:
+                h.update(f"{item[:2]!r} {path} gone\n".encode())
+        return {"head": head, "digest": h.hexdigest(), "dirty": dirty}
+
+    def stamp(self):
+        try:
+            with open(SITE_EXPORT + ".json") as f:
+                return json.load(f)
+        except (OSError, ValueError):
+            return {}
+
+    def url(self):
+        """The export's page, or None while there is none (or --companion names another site). One made before is
+        served even when it cannot be made again -- better a companion a little behind than none."""
+        if not self.enabled or not os.path.isfile(os.path.join(SITE_EXPORT, "index.html")):
+            return None
+        return SITE_PREFIX + "/"
+
+    def why(self):
+        """None while an export is served; otherwise why not -- "building" while the first one is made."""
+        if self.url():
+            return None
+        if self.building:
+            return "building"
+        return self.why_not() or self.failed or "not exported yet"
+
+    def ensure(self):
+        """Export again, in the background, if the companion has changed since the last export (looked at once every
+        30 s at most: the page asks every two minutes, and as the COMPANION tab opens)."""
+        if self.why_not():
+            return
+        with self.lock:
+            if self.building or time.time() - self.checked < 30:
+                return
+            self.checked = time.time()
+            now = self.fingerprint()
+            if self.url() and (now is None or self.stamp().get("digest") == now["digest"]):
+                return                                      # as it was (or not a git checkout: the one there is kept)
+            if self.failed and (now and now["digest"]) == self.failed_for:
+                return                                      # failed as it is: tried again once it has changed
+            self.building = True
+        threading.Thread(target=self.build, args=(now,), daemon=True).start()
+
+    def build(self, now):
+        head = now["head"] if now else ""
+        nxt, started = SITE_EXPORT + ".next", time.time()
+        shutil.rmtree(nxt, ignore_errors=True)
+        # the site as bindCompanion.sh's own: its default server (127.0.0.1:4730; ?server= names the playground's) and
+        # no BUILD, which is the phone's -- whatever this shell was given for the app is not passed on
+        env = {k: v for k, v in os.environ.items() if k not in ("EXPO_PUBLIC_DAEMONS_SERVER", "EXPO_PUBLIC_BUILD")}
+        env.update(CI="1", EXPO_NO_TELEMETRY="1", PATH=os.path.dirname(self.node) + os.pathsep + env.get("PATH", ""))
+        print(f"playground: exporting the companion's site ({head[:7] or 'not a git checkout'}"
+              f"{', with what is uncommitted' if now and now['dirty'] else ''}) -- data/companion-site.log")
+        try:
+            with open(SITE_EXPORT + ".log", "wb") as log:
+                r = subprocess.run([self.node, os.path.join("node_modules", "expo", "bin", "cli"), "export",
+                                    "--platform", "web", "--output-dir", nxt], cwd=os.path.join(COMPANION, "app"),
+                                   env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, timeout=900)
+            ok = r.returncode == 0 and os.path.isfile(os.path.join(nxt, "index.html"))
+        except (OSError, subprocess.SubprocessError):
+            ok = False
+        if ok:
+            old = SITE_EXPORT + ".old"
+            shutil.rmtree(old, ignore_errors=True)
+            if os.path.isdir(SITE_EXPORT):
+                os.replace(SITE_EXPORT, old)
+            os.replace(nxt, SITE_EXPORT)
+            shutil.rmtree(old, ignore_errors=True)
+            with open(SITE_EXPORT + ".json.tmp", "w") as f:
+                json.dump({**(now or {}), "at": time.strftime("%Y-%m-%d %H:%M:%S")}, f, indent=2)
+            os.replace(SITE_EXPORT + ".json.tmp", SITE_EXPORT + ".json")
+            self.failed = self.failed_for = None
+            print(f"playground: the companion's site exported in {time.time() - started:.0f} s: {SITE_PREFIX}/")
+        else:
+            shutil.rmtree(nxt, ignore_errors=True)
+            self.failed, self.failed_for = "the export failed -- see data/companion-site.log", now and now["digest"]
+            kept = "the last export is served still" if self.url() else "the COMPANION tab falls back to port 8081"
+            print(f"playground: {self.failed}; {kept}")
+        self.building = False
+
+
 # What only the Mac may do, which the companion's server allows any request from this machine -- and through this proxy
 # every request is from this machine. So they are refused here: pairing a phone, the network, the Mac's dialogs and
 # Finder, the relay's secret, Home Assistant, the AI's door, and the save's path (the playground's, not a tester's).
@@ -292,7 +433,8 @@ NOT_THROUGH = {"/api/pair", "/api/pair/code", "/api/pair/phones", "/api/pair/for
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
-    build, base, companion, companions = False, RELEASES, None, None
+    build, base, companion, companions, site = False, RELEASES, None, None, None
+    status = None
 
     def __init__(self, *a, **k):
         super().__init__(*a, directory=SITE, **k)
@@ -300,9 +442,33 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, fmt, *args):
         sys.stderr.write("playground: %s %s\n" % (self.client_address[0], fmt % args))
 
+    def send_response(self, code, message=None):
+        self.status = code
+        super().send_response(code, message)
+
     def end_headers(self):
-        self.send_header("Cache-Control", "no-cache")
+        # the export's bundle and assets are named for what is in them, so a phone fetches each once; the rest is asked
+        # again every time (the companion's page names a new bundle after each export)
+        named = urllib.parse.urlsplit(self.path).path.startswith(("/_expo/static/", "/assets/"))
+        self.send_header("Cache-Control", "max-age=31536000, immutable" if named and self.status in (200, 304)
+                         else "no-cache")
         super().end_headers()
+
+    def translate_path(self, path):
+        # the companion's site, exported: its page at /companion-site/, and what it names from the root (SITE_ROOTS)
+        p = urllib.parse.urlsplit(path).path
+        strip = len(SITE_PREFIX) if p == SITE_PREFIX or p.startswith(SITE_PREFIX + "/") else 0 if p.startswith(SITE_ROOTS) else None
+        if strip is None:
+            return super().translate_path(path)
+        self.directory = SITE_EXPORT
+        try:
+            return super().translate_path(path[strip:] or "/")
+        finally:
+            self.directory = SITE
+
+    def list_directory(self, path):
+        self.send_error(404)                            # a folder of the site's or the export's is not a page
+        return None
 
     def json(self, value, head=False, status=200):
         body = json.dumps(value).encode()
@@ -422,8 +588,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if path == "/info.json":
             roms, label = find_roms(self.build, self.base)
             why = self.companions.why_not() if self.companions else "--no-companion"
+            if self.site:
+                self.site.ensure()                      # made again if the companion has changed since
             return self.json({"release": label, "editions": sorted(roms), "companion": self.companion,
-                              "companions": why is None, "companionsWhy": why}, head)
+                              "companions": why is None, "companionsWhy": why,
+                              "companionSite": self.site and self.site.url(),
+                              "companionSiteWhy": self.site.why() if self.site else "--companion"}, head)
         if path.startswith("/companion/"):
             return self.proxy(head)
         m = re.match(r"^/save/(daemonsCont(?:ent|ext)(?:_debug)?)\.(sav|json)$", path)
@@ -469,7 +639,8 @@ def main():
     ap = argparse.ArgumentParser(description="The DAEMONS playground: the game in a browser, the companion beside it")
     ap.add_argument("--port", type=int, default=4740)
     ap.add_argument("--build", action="store_true", help="DAEMONS' engineGba build, not the latest ROM RELEASE")
-    ap.add_argument("--companion", help="the COMPANION tab's site (default: the page's own host, port 8081)")
+    ap.add_argument("--companion", help="the COMPANION tab's site (default: the playground's own export of it, made "
+                                        "from DAEMONS/companion/app; the page's own host, port 8081, when there is none)")
     ap.add_argument("--releases", default=RELEASES, help="where the releases are (default: ../DAEMONS/ROM RELEASE)")
     ap.add_argument("--no-companion", action="store_true",
                     help="run no companion of the playground's own: the COMPANION tab shows its site's own server")
@@ -481,7 +652,9 @@ def main():
         where = "DAEMONS/engineGba (make -C engineGba firered ...)" if a.build else a.releases + " (DAEMONS tools/romrelease.py)"
         sys.exit(f"playground: no ROMs found in {where}")
     companions = Companions(a.companion_port, not a.no_companion)
+    site = CompanionSite(not a.companion)
     Handler.build, Handler.base, Handler.companion, Handler.companions = a.build, a.releases, a.companion, companions
+    Handler.site = site
     sys.stdout.reconfigure(line_buffering=True)
     srv = http.server.ThreadingHTTPServer(("0.0.0.0", a.port), Handler)
     print(f"playground: {label} -- {', '.join(sorted(roms))}")
@@ -496,6 +669,17 @@ def main():
               "of its build asks (data/companions/)")
     else:
         print(f"playground: no companion of its own ({why}): the COMPANION tab shows its site's own server")
+    why = site.why_not()
+    if a.companion:
+        print(f"playground: the COMPANION tab's site: {a.companion}")
+    elif why and site.url():
+        print(f"playground: the COMPANION tab's site is its last export, at {SITE_PREFIX}/ -- not made again ({why})")
+    elif why:
+        print(f"playground: no export of the companion's site ({why}): the COMPANION tab shows this host's port 8081")
+    else:
+        print(f"playground: the COMPANION tab's site is its own export, at {SITE_PREFIX}/ (data/companion-site/), made "
+              "again whenever daemons-companion has changed")
+        site.ensure()
     print("playground: answering this machine, private addresses and the tailnet only. Ctrl-C stops it.")
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     try:

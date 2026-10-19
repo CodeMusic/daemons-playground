@@ -26,17 +26,16 @@ DAEMONS sits beside this repository (`~/Projects/DAEMONS` and `~/Projects/daemon
 ./bindPlayground.sh
 ```
 
-Then open `http://localhost:4740/`, or the tailnet address it prints to play from a phone. The COMPANION tab shows the
-companion's site from the same host at port 8081: start it with `./companion/bindCompanion.sh app` from DAEMONS (the
-site alone; the playground runs its own companions behind it), or point the tab elsewhere with `--companion URL`. The
-playground's companions need daemons-companion beside DAEMONS (DAEMONS' `setup.sh` links it as `DAEMONS/companion`),
-its server installed once (`npm install` in its `server/`), and Node 24.
+Then open `http://localhost:4740/`, or the tailnet address it prints to play from a phone. Nothing else needs to be
+running: the COMPANION tab's site is the playground's own too (see [The companion's site](#the-companions-site)). The
+companion needs daemons-companion beside DAEMONS (DAEMONS' `setup.sh` links it as `DAEMONS/companion`), installed once
+(`npm install` in its `server/` and its `app/`), and Node 24.
 
 | | |
 |---|---|
 | `./bindPlayground.sh --build` | DAEMONS' own `engineGba` build instead of the latest release, to try a change before it is released |
 | `./bindPlayground.sh --port 8000` | another port |
-| `./bindPlayground.sh --companion URL` | the COMPANION tab's site |
+| `./bindPlayground.sh --companion URL` | the COMPANION tab's site, instead of the playground's own export of it: `http://localhost:8081/` is the Expo dev server's (`./companion/bindCompanion.sh app`), to work on the companion and see it at once |
 | `./bindPlayground.sh --no-companion` | no companion of the playground's own: the tab shows the site on its own server |
 | `./bindPlayground.sh --companion-port 4731` | the first of the four companions' ports |
 | `DAEMONS_ROOT=/path/to/DAEMONS` | DAEMONS somewhere other than beside this repository |
@@ -47,8 +46,8 @@ Python 3.8 or newer, nothing to install.
 ## What is not here, and why
 
 **No ROM, and nothing of Nintendo's.** DAEMONS is built on pret's disassembly of a Nintendo game, so its ROMs are never
-distributed. This repository holds only the page and its small server (and `data/`, ignored: the saves and the
-companions' databases, this machine's alone); the ROMs are read from the DAEMONS checkout
+distributed. This repository holds only the page and its small server (and `data/`, ignored: the saves, the
+companions' databases and the export of the companion's site, this machine's alone); the ROMs are read from the DAEMONS checkout
 beside it, on the machine that built them. **The server answers only that machine, a private network and the
 tailnet**, and refuses anything else before a byte is read. Keep it that way: the playground is for demos and beta
 testing among the people on your own network, never a public site.
@@ -90,6 +89,29 @@ game says so and offers to start fresh; the old one is kept aside as `data/compa
 **One companion per build, for everyone.** Two people playing the same build on one playground at once share its save
 and its companion, and each one's save replaces the other's. For a beta test with several people at once, give each a
 different build, or a playground of their own.
+
+## The companion's site
+
+The COMPANION tab shows daemons-companion's own site, **exported by the playground and served by it**: as it starts,
+it runs `npx expo export --platform web` in `DAEMONS/companion/app` (with Node 24) into `data/companion-site/`, and the
+tab opens it at `/companion-site/` on the playground's own address, told by `?server=` to use the playground's
+companion. So the tab needs no Expo dev server, and a phone on the tailnet loads one minified bundle (about 2 MB, once:
+its name changes with what is in it) instead of a development build.
+
+It is exported again only when the companion has changed since the last export -- its HEAD, or anything uncommitted
+in its `app/`, `server/src` or `server/data`, which the site is built from. The playground looks as it starts and,
+at most every 30 seconds, as pages ask after it; the export runs in the background (a few seconds once Metro's cache
+is warm, about a minute the first time) and the one before is served until it is done. The commit it was made from is
+in `data/companion-site.json`, the export's output in `data/companion-site.log`. An export that fails keeps the one before, and is not tried again until the companion
+changes.
+
+The export names its files from the root (`/_expo/…`, `/assets/…`: the app sets no `baseUrl`), so the playground serves
+those two folders from it as well; nothing of the playground's own lives there.
+
+**To work on the companion's site** and see each change at once, run the Expo dev server
+(`./companion/bindCompanion.sh app` from DAEMONS) and start the playground with `--companion http://localhost:8081/`.
+If the playground cannot export the site at all (no `npm install` in `app/`, no Node 24) and has never exported it, the
+tab falls back to that dev server on the page's own host, port 8081, and says why when nothing answers there.
 
 ## Keys
 
