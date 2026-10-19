@@ -4,3 +4,5 @@ __pycache__/
 *.gba
 *.sav
 *.srm
+# the browser's saves and the playground's own companions (their databases and logs): this machine's, never committed
+data/

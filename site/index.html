@@ -70,7 +70,7 @@
   .pane { flex: 1; min-height: 0; position: relative; }
   #game { width: 100%; height: 100%; }
   #companion { width: 100%; height: 100%; border: 0; background: #fff; }
-  #companion-down { max-width: 520px; margin: 48px auto; padding: 0 16px; color: var(--dim); }
+  #companion-down, #companion-wait { max-width: 520px; margin: 48px auto; padding: 0 16px; color: var(--dim); }
   #companion-down code { color: var(--text); }
   #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: calc(100% - 32px);
            background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 16px; z-index: 10; }
@@ -166,10 +166,11 @@
   <section class="pane" id="game-pane" role="tabpanel"><div id="game"></div></section>
   <section class="pane" id="companion-pane" role="tabpanel" hidden>
     <iframe id="companion" title="The DAEMONS companion" hidden></iframe>
+    <p id="companion-wait" hidden>SYNC…</p>
     <div id="companion-down" hidden>
       <p>The companion's site isn't answering at <code id="companion-url"></code>.</p>
-      <p>Start it on the Mac with <code>./companion/bindCompanion.sh</code>, then
-        <button class="link" id="companion-retry">try again</button>.</p>
+      <p>Start it on the Mac with <code>./companion/bindCompanion.sh app</code> (the site alone: the playground runs
+        its own companion behind it), then <button class="link" id="companion-retry">try again</button>.</p>
     </div>
   </section>
   <section class="pane scroll" id="news-pane" role="tabpanel" hidden><div class="notes" id="news-all"></div></section>
@@ -186,6 +187,15 @@
     <button class="main" id="kept-continue">Continue it</button>
     <button id="kept-download">Download it</button>
     <button id="kept-new">Start a new game</button>
+  </div>
+</dialog>
+
+<dialog id="married">
+  <h2>This companion carried another game</h2>
+  <p id="married-text"></p>
+  <div class="choices">
+    <button class="main" id="married-fresh">Start it fresh for this game</button>
+    <button id="married-leave">Leave it as it is</button>
   </div>
 </dialog>
 
@@ -249,7 +259,7 @@ $("savefile").addEventListener("change", async (e) => {
 $("play").addEventListener("click", () => {
   const { edition, debug } = chosen();
   remember({ edition, debug });
-  game = { edition, debug, base: NAMES[edition] + (debug ? "_debug" : "") };
+  game = { edition, debug, build: edition + (debug ? "_debug" : ""), base: NAMES[edition] + (debug ? "_debug" : "") };
   $("choose").hidden = true;
   $("screen").hidden = false;
   what(save ? "from " + saveName : "new game");
@@ -311,13 +321,16 @@ const store = {
   },
 };
 let last = null, keptSave = null;
-function keep() {
+async function keep() {
   const g = manager();
-  if (!g || !game) return Promise.resolve();
+  if (!g || !game) return;
   const b = g.getSaveFile();                   // the game's save memory, written out first
-  if (blank(b) || same(b, last)) return Promise.resolve();
-  last = b.slice();
-  return store.put(game.base, { bytes: last, at: Date.now(), release: info.release });
+  if (blank(b)) return;
+  if (!same(b, last)) {
+    last = b.slice();
+    await store.put(game.base, { bytes: last, at: Date.now(), release: info.release });
+  }
+  if (info.companions && !same(b, posted)) await post(b);
 }
 function putSave(bytes) {
   const g = manager(), p = g.getSaveFilePath();
@@ -338,7 +351,7 @@ async function onStart() {
   setInterval(checkNewer, 120000);
   if (save) { putSave(save); last = save; toast("Started from " + saveName); return; }
   keptSave = await store.get(game.base);
-  if (!keptSave || blank(keptSave.bytes)) { putSave(new Uint8Array(SAVE_SIZE).fill(0xFF)); return; }
+  if (!keptSave || blank(keptSave.bytes)) { putSave(new Uint8Array(SAVE_SIZE).fill(0xFF)); newGame(); return; }
   window.EJS_emulator.pause();
   $("kept-text").textContent = `From your last ${game.edition.toUpperCase()}${game.debug ? " DEBUG" : ""} game here, ` +
     `saved ${new Date(keptSave.at).toLocaleString()}${keptSave.release ? " on " + keptSave.release : ""}. ` +
@@ -361,6 +374,7 @@ $("kept-new").onclick = () => {
   if (!confirm("Start a new game? The kept save is replaced the first time the new game is saved -- download it first if you want it.")) return;
   $("kept").close();
   putSave(new Uint8Array(SAVE_SIZE).fill(0xFF));
+  newGame();
   window.EJS_emulator.play();
 };
 document.addEventListener("visibilitychange", () => { if (document.hidden) keep(); });
@@ -394,9 +408,85 @@ $("change").onclick = async () => {
 let leaving = false;
 addEventListener("beforeunload", (e) => { if (game && !leaving) { e.preventDefault(); e.returnValue = ""; } });
 
+// ---- the companion: the playground's own, fed this game's save (DAEMONS T-428, companion C-169) --------------------------
+// The playground runs a companion of its own for each build (never the user's): its save is this game's, posted to the
+// playground's server whenever it changes. Opening the COMPANION tab is opening the save in the app: the companion SYNCs
+// it -- links it the first time, takes a daemon the game SENT, brings one home -- and when that writes the save, the save
+// goes back into the game, which starts again from it (the game is closed while the app edits its save, as on a cart).
+// A SYNC pressed in the companion's own site does the same: its save is watched while the tab is open. The site is the
+// companion's own (port 8081), told by ?server= to use the playground's companion, through this server.
+let posted = null, postedSha = null, syncedSha = null, restartedBy = null, watching = 0;
+async function post(b) {
+  try {
+    const r = await fetch(`save/${game.base}.sav`, { method: "POST", body: b,
+                                                     headers: { "content-type": "application/octet-stream" } });
+    if (r.ok) { posted = b.slice(); postedSha = (await r.json()).sha1; }
+  } catch { /* the server is away for a moment: posted at the next look */ }
+}
+async function newGame() {                     // the companion must not go on reading the game before this one
+  if (!info.companions) return;
+  try { await fetch(`save/${game.base}.sav`, { method: "POST" }); } catch { /* the next save replaces it anyway */ }
+  posted = postedSha = syncedSha = null;
+}
+const companionApi = (path) => `companion/${game.build}${path}`;
+async function syncNow() {
+  let r, res;
+  try {
+    res = await fetch(companionApi("/api/sync"), { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+    r = await res.json();
+  } catch {
+    toast("The playground's companion didn't answer the SYNC.", 6000);
+    return false;
+  }
+  if (!res.ok) { toast("SYNC: " + (r.error || res.status), 8000); return false; }
+  syncedSha = postedSha;
+  if (r.sameGame === false) { marry(r.married); return false; }
+  const did = [r.received.length && "took " + r.received.join(", "),
+               r.returned.length && "brought " + r.returned.join(", ") + " home",
+               r.firstLink && "linked to this game", r.grew && `gave ${r.grew.nickname} what it grew`,
+               r.casino && "settled the CASINO"].filter(Boolean);
+  return fromCompanion(did.length ? did.join(" and ") : "wrote the save");
+}
+async function fromCompanion(did) {
+  // the companion wrote the save: it goes into the game, paused behind this tab, which starts again from it. Only a save
+  // this page posted is looked at -- anything else on the server is not this game's to take.
+  if (!postedSha) return false;
+  let now;
+  try { now = await (await fetch(`save/${game.base}.json`, { cache: "no-store" })).json(); } catch { return false; }
+  if (!now.sha1 || now.sha1 === postedSha) return false;
+  let bytes;
+  try { bytes = new Uint8Array(await (await fetch(`save/${game.base}.sav`, { cache: "no-store" })).arrayBuffer()); }
+  catch { return false; }
+  putSave(bytes);
+  const emu = window.EJS_emulator;
+  if (emu && !emu.paused) { emu.pause(); pausedByTab = true; }
+  posted = bytes.slice(); postedSha = syncedSha = now.sha1;
+  restartedBy = did;
+  await keep();                                // this browser's copy is the companion's too
+  return true;
+}
+function marry(married) {
+  $("married-text").textContent = `It is married to ${married.name}'s game (ID ${married.trainerId}), and a daemon it ` +
+    "carries can only go home to that one. Start a fresh companion for this game? The old one is kept aside.";
+  $("married").showModal();
+}
+$("married-leave").onclick = () => $("married").close();
+$("married-fresh").onclick = async () => {
+  $("married").close();
+  try { await fetch(`companion-reset/${game.build}`, { method: "POST" }); } catch { return; }
+  syncedSha = null;
+  await syncNow();
+  loadCompanion(true);
+};
+$("married").addEventListener("cancel", (e) => e.preventDefault());
+
 // ---- the tabs ---------------------------------------------------------------------------------------------------------
 // The game pauses while another tab is shown, and goes on as it was when it comes back.
-const companionUrl = () => (info && info.companion) || `${location.protocol}//${location.hostname}:8081/`;
+function companionUrl() {
+  const u = new URL((info && info.companion) || `${location.protocol}//${location.hostname}:8081/`, location.href);
+  if (info && info.companions && game) u.searchParams.set("server", `${location.origin}/companion/${game.build}`);
+  return u.href;
+}
 const TABS = ["game", "companion", "news"];
 let pausedByTab = false;
 function show(tab) {
@@ -405,17 +495,39 @@ function show(tab) {
     $(t + "-pane").hidden = t !== tab;
   }
   const emu = window.EJS_emulator;
+  clearInterval(watching);
   if (tab !== "game") {
     if (emu && !emu.paused) { emu.pause(); pausedByTab = true; }
     if (tab === "companion") openCompanion();
-  } else if (emu && pausedByTab) {
-    pausedByTab = false;
-    emu.play();
+  } else {
+    if (emu && pausedByTab) { pausedByTab = false; emu.play(); }
+    if (restartedBy) {
+      toast(`The companion ${restartedBy}. The game started again from the save it wrote: choose CONTINUE.`, 9000);
+      restartedBy = null;
+    }
   }
 }
 async function openCompanion() {
+  let moved = false;
+  if (info.companions && game) {
+    $("companion-wait").hidden = !!$("companion").src;
+    await keep();
+    // a save the companion has not seen yet is SYNCed (and the site shown again); otherwise only what the companion
+    // wrote meanwhile is taken
+    if (postedSha && postedSha !== syncedSha) { await syncNow(); moved = true; }
+    else moved = await fromCompanion("wrote the save");
+    $("companion-wait").hidden = true;
+    if ($("companion-pane").hidden) return;          // left again while it synced
+    clearInterval(watching);
+    watching = setInterval(() => fromCompanion("SYNCed the save"), 3000);
+  } else if (info.companionsWhy && info.companionsWhy !== "--no-companion" && !$("companion").src) {
+    toast("The playground has no companion of its own (" + info.companionsWhy + "): this is the site's own.", 9000);
+  }
+  loadCompanion(moved);
+}
+async function loadCompanion(again) {
   const url = companionUrl(), frame = $("companion");
-  if (frame.src) return;
+  if (frame.src && !again) return;
   $("companion-url").textContent = url;
   try {
     await fetch(url, { mode: "no-cors", cache: "no-store" });   // any answer at all
@@ -428,7 +540,7 @@ async function openCompanion() {
   frame.src = url;
 }
 for (const t of TABS) $("tab-" + t).onclick = () => show(t);
-$("companion-retry").onclick = openCompanion;
+$("companion-retry").onclick = () => loadCompanion(true);
 
 // ---- what's new: each release's notes (DAEMONS' RELEASE_NOTES.md), the newest first --------------------------------
 // The notes are a little markdown -- headings, lists, tables, `code`, **bold**, *italic* -- so a little reader. A commit
