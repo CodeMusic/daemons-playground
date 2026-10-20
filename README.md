@@ -12,6 +12,8 @@ on the screen. Beside the game:
   playing. **SEND** a daemon in the game, open the tab, and it is there. The game pauses while you look.
 - **WHAT'S NEW**: each release's notes, newest first, every engine and design change linked to its commit. If a newer
   release lands while you play, the page says so.
+- **HELP**: how to play, how to use the companion (SEND, SYNC, care, CALL HOME), and where else a daemon can live --
+  the companion's iPhone app and the LilyGO and M5Stack boards. It is on the start page too.
 - **Download save**: the game's save as a `.sav` at any moment, for mGBA, Delta or a cart. The page also keeps the
   last one in your browser and offers it the next time you come back.
 
@@ -115,5 +117,6 @@ tab falls back to that dev server on the page's own host, port 8081, and says wh
 
 ## Keys
 
-Arrows move, **Z** is A, **X** is B, **Enter** START, **V** SELECT, **Q** and **E** L and R: EmulatorJS's own, changed
-with the controller button under the game.
+Arrows move, **X** is A, **Z** is B (as in mGBA: EmulatorJS's own default is the other way round), **Enter** START,
+**V** SELECT, **Q** and **E** L and R. Change them with the controller button under the game; a mapping you chose is
+kept. On a phone, the buttons on the screen, laid out as on a GBA.

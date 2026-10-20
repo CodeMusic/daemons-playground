@@ -391,6 +391,7 @@ class CompanionSite:
         head = now["head"] if now else ""
         nxt, started = SITE_EXPORT + ".next", time.time()
         shutil.rmtree(nxt, ignore_errors=True)
+        os.makedirs(DATA, exist_ok=True)            # a fresh clone has no data/ yet: its log could not be opened
         # the site as bindCompanion.sh's own: its default server (127.0.0.1:4730; ?server= names the playground's) and
         # no BUILD, which is the phone's -- whatever this shell was given for the app is not passed on
         env = {k: v for k, v in os.environ.items() if k not in ("EXPO_PUBLIC_DAEMONS_SERVER", "EXPO_PUBLIC_BUILD")}

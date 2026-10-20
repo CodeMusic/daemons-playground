@@ -79,7 +79,10 @@
   .news { margin-top: 32px; border-top: 1px solid var(--line); padding-top: 8px; }
   .news h2 { font-size: 13px; color: var(--dim); letter-spacing: .08em; text-transform: uppercase; }
   .pane.scroll { overflow-y: auto; }
-  #news-all { max-width: 760px; margin: 0 auto; padding: 16px; }
+  #news-all, #help-all { max-width: 760px; margin: 0 auto; padding: 16px; }
+  .help ol { padding-left: 22px; margin: 6px 0; }
+  .help li, .help p { font-size: 15px; }
+  .help .aside { color: var(--dim); }
   .notes h3 { font-size: 18px; margin: 20px 0 4px; }
   .notes h4 { font-size: 14px; color: var(--dim); letter-spacing: .04em; margin: 16px 0 6px; }
   .notes p, .notes li { font-size: 14px; }
@@ -107,6 +110,9 @@
     .editions { grid-template-columns: 1fr; }
     .actions button { padding: 6px 8px; font-size: 14px; }
     #what { order: 3; flex-basis: 100%; }
+    /* four tabs across a phone: the whole row, each word on one line */
+    .tabs { flex: 1 1 100%; justify-content: space-between; overflow-x: auto; }
+    .tabs button { padding: 6px 7px; font-size: 13px; letter-spacing: .04em; white-space: nowrap; }
   }
 </style>
 </head>
@@ -139,9 +145,13 @@
   <button id="play" disabled>PLAY</button>
   <p class="note">The game's own SAVE (START, then SAVE) is kept in this browser between visits. Download it from the
     game screen to keep it, or to load it in mGBA, Delta or on the cart.</p>
-  <p class="note keys"><b>Keys</b> · arrows move · <kbd>Z</kbd> A · <kbd>X</kbd> B · <kbd>Enter</kbd> START ·
+  <p class="note keys"><b>Keys</b> · arrows move · <kbd>X</kbd> A · <kbd>Z</kbd> B · <kbd>Enter</kbd> START ·
     <kbd>V</kbd> SELECT · <kbd>Q</kbd> <kbd>E</kbd> L and R · on a phone, the buttons on the screen. Change them with the
     controller button under the game (Control Settings).</p>
+
+  <section class="news">
+    <details id="help-intro"><summary>How to play, and the companion</summary><div class="notes help"></div></details>
+  </section>
 
   <section class="news" id="news" hidden>
     <h2>What's new</h2>
@@ -156,6 +166,7 @@
       <button role="tab" id="tab-game" aria-selected="true" aria-controls="game-pane">GAME</button>
       <button role="tab" id="tab-companion" aria-selected="false" aria-controls="companion-pane">COMPANION</button>
       <button role="tab" id="tab-news" aria-selected="false" aria-controls="news-pane">WHAT'S NEW</button>
+      <button role="tab" id="tab-help" aria-selected="false" aria-controls="help-pane">HELP</button>
     </div>
     <span id="what"></span>
     <div class="actions">
@@ -176,6 +187,7 @@
     </div>
   </section>
   <section class="pane scroll" id="news-pane" role="tabpanel" hidden><div class="notes" id="news-all"></div></section>
+  <section class="pane scroll" id="help-pane" role="tabpanel" hidden><div class="notes help" id="help-all"></div></section>
   <div id="newer" hidden>
     <span id="newer-text"></span>
     <button class="link" id="newer-close">dismiss</button>
@@ -200,6 +212,60 @@
     <button id="married-leave">Leave it as it is</button>
   </div>
 </dialog>
+
+<template id="help-text">
+  <h3>Playing DAEMONS</h3>
+  <p>A whole game built on FireRed and LeafGreen. The creatures are daemons, and the towns, the types and the people
+    are new. It explains very little on purpose: talk to everyone, read the signs, and see what the INDEX says.</p>
+  <ul>
+    <li><b>Two editions.</b> CONTENT and CONTEXT share one world and one type chart. Which daemons you meet, and what
+      the INDEX says about them, differ. Each keeps its own save, and so does each DEBUG build.</li>
+    <li><b>Keys.</b> Arrows move. <kbd>X</kbd> is A (talk, choose), <kbd>Z</kbd> is B (back, and run once you have the
+      shoes), <kbd>Enter</kbd> is START (the menu), <kbd>V</kbd> is SELECT, <kbd>Q</kbd> and <kbd>E</kbd> are L and R.
+      On a phone, the buttons on the screen; a gamepad works too. Change any of them with the controller button under
+      the game.</li>
+    <li><b>Saving.</b> START, then SAVE. This browser keeps your last save for the next visit, and
+      <b>Download save</b> gives you the <code>.sav</code> to carry on in mGBA, in Delta on a phone, or on a cart.</li>
+    <li><b>The DEBUG build</b> starts as a normal game, with DEBUG in its START menu. GAME EVENTS hands out the story's
+      pieces in order, and EVERYTHING gives them all at once: six daemons, the bag, every MARK.</li>
+    <li><b>WHAT'S NEW</b> has each release's notes. When a newer release lands while you play, the page says so:
+      download your save, then Change game.</li>
+  </ul>
+
+  <h3>The companion</h3>
+  <p>A daemon does not have to stay in the game. <b>SEND</b> it, and the companion hosts it: it keeps the daemon's
+    day, helps you get something done one step at a time, plays THE CASINO, and sends everything that happened home
+    at the next <b>SYNC</b>. One daemon goes out at a time.</p>
+  <ol>
+    <li><b>SEND.</b> In your party, choose a daemon, then SEND. The game saves. A new game offers SEND after the
+      companion's first SYNC (open COMPANION once after saving); a DEBUG game's kit has it already.</li>
+    <li><b>Open COMPANION.</b> It SYNCs your save and the daemon steps out. The game starts again from the save the
+      companion wrote: choose CONTINUE, and the daemon is AWAY, washed out in your party.</li>
+    <li><b>Look after it.</b> TODAY has its day and its care: FEED, DRINK, TRAIN. In GOALS, tell it what you want to
+      get done and it finds one next step; each step you finish is a meal, and experience it takes home. DAEMON has
+      your party, the INDEX and its routines, THE CASINO among them, whose coins are your game's money. LIBRARY, YOU
+      and PLACES show what your save has reached.</li>
+    <li><b>CALL HOME.</b> In your party, the daemon's menu offers CALL HOME. The game saves; open COMPANION, and it
+      comes back with what it gained.</li>
+  </ol>
+  <p class="aside">The playground runs a companion of its own for each build, so nothing here touches anyone's real
+    companion. Two people playing the same build on one playground share it.</p>
+
+  <h3>Take your daemon with you</h3>
+  <p>The full companion is its own project,
+    <a href="https://github.com/CodeMusic/daemons-companion" target="_blank" rel="noopener">daemons-companion</a>,
+    and your daemon can live on more than this page:</p>
+  <ul>
+    <li><b>An app on your iPhone</b>, with a home-screen widget that hosts a daemon of its own: DRINK, FEED, TRAIN
+      and, at bedtime, SLEEP, without opening anything.</li>
+    <li><b>Development boards.</b> Most LilyGO and M5Stack boards can host one: a T&#8209;Embed with its dial, a T&#8209;Deck or
+      a Cardputer with a keyboard, a T&#8209;Watch S3 on your wrist, a StickS3 in a pocket, a Tab5 as a control center. With
+      more than one, each hosts a different daemon from your party.</li>
+    <li><b>Out in the world</b> it keeps its day, plays THE CASINO, answers in its INDEX voice when you hold to talk,
+      and meets other daemons nearby over Bluetooth, your network or LoRa. When you SYNC, it goes home to your game
+      with everything that happened.</li>
+  </ul>
+</template>
 
 <div id="toast" role="status" hidden></div>
 
@@ -346,9 +412,22 @@ function putSave(bytes) {
   g.loadSaveFiles();
   g.restart();
 }
+// A on X and B on Z, as mGBA has them (the user, 2026-10-19: "A and B button are opposite from the emulator") --
+// EmulatorJS's own default is the other way round. Its default is changed too, so Control Settings' Reset keeps this;
+// a mapping a player chose for themselves is left as it is. The buttons on a phone's screen were right already.
+function mgbaKeys() {
+  const emu = window.EJS_emulator, key = (v) => parseInt(emu.keyLookup(v), 10);   // its key codes, as numbers
+  const d = emu.defaultControllers && emu.defaultControllers[0], c = emu.controls && emu.controls[0];
+  if (d && d[0] && d[8] && key(d[0].value) === key("x") && key(d[8].value) === key("z")) { d[0].value = "z"; d[8].value = "x"; }
+  if (c && c[0] && c[8] && key(c[0].value) === key("x") && key(c[8].value) === key("z")) {
+    c[0].value = key("z");
+    c[8].value = key("x");
+  }
+}
 async function onStart() {
   if (started) return;
   started = true;
+  try { mgbaKeys(); } catch { /* EmulatorJS changed its insides: its own keys, then */ }
   setInterval(keep, 5000);
   setInterval(checkNewer, 120000);
   if (save) { putSave(save); last = save; toast("Started from " + saveName); return; }
@@ -491,7 +570,7 @@ function companionUrl() {
   if (info && info.companions && game) u.searchParams.set("server", `${location.origin}/companion/${game.build}`);
   return u.href;
 }
-const TABS = ["game", "companion", "news"];
+const TABS = ["game", "companion", "news", "help"];
 let pausedByTab = false;
 function show(tab) {
   for (const t of TABS) {
@@ -635,6 +714,9 @@ function toast(text, ms = 4000) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { $("toast").hidden = true; }, ms);
 }
+
+// ---- help: how to play, the companion, and where a daemon can go from here (the user, 2026-10-19) ----------------------
+for (const el of document.querySelectorAll(".help")) el.append($("help-text").content.cloneNode(true));
 
 boot();
 </script>
