@@ -69,6 +69,11 @@
   .actions button.main { border-color: var(--accent); }
   .pane { flex: 1; min-height: 0; position: relative; }
   #game { width: 100%; height: 100%; }
+  #tap-to-play { position: absolute; inset: 0; margin: auto; width: min(320px, calc(100% - 32px)); height: 140px; z-index: 6;
+                 display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 16px;
+                 background: rgba(15, 17, 21, .92); border: 2px solid var(--accent); border-radius: 16px; }
+  #tap-to-play b { font-size: 22px; letter-spacing: .12em; }
+  #tap-to-play small { color: var(--dim); font-size: 13px; }
   #companion { width: 100%; height: 100%; border: 0; background: #fff; }
   #companion-down, #companion-wait, #companion-building { max-width: 520px; margin: 48px auto; padding: 0 16px; color: var(--dim); }
   #companion-down code { color: var(--text); }
@@ -174,7 +179,9 @@
       <button id="change">Change game</button>
     </div>
   </nav>
-  <section class="pane" id="game-pane" role="tabpanel"><div id="game"></div></section>
+  <section class="pane" id="game-pane" role="tabpanel"><div id="game"></div>
+    <button id="tap-to-play" hidden><b>▶ TAP TO PLAY</b><small>A phone starts the game's sound only on a tap, and the
+      game waits for its sound.</small></button></section>
   <section class="pane" id="companion-pane" role="tabpanel" hidden>
     <iframe id="companion" title="The DAEMONS companion" hidden></iframe>
     <p id="companion-wait" hidden>SYNC…</p>
@@ -427,6 +434,9 @@ function mgbaKeys() {
 async function onStart() {
   if (started) return;
   started = true;
+  const f0 = frames();
+  setTimeout(() => { const ctx = soundContext(); tell("started", `${frames() - f0} frames in 5 s, sound ${ctx ? ctx.state : "none"}`); }, 5000);
+  setInterval(soundWatch, 500);
   try { mgbaKeys(); } catch { /* EmulatorJS changed its insides: its own keys, then */ }
   setInterval(keep, 5000);
   setInterval(checkNewer, 120000);
@@ -706,6 +716,58 @@ async function checkNewer() {
   } catch { /* the server is away for a moment */ }
 }
 $("newer-close").onclick = () => { $("newer").hidden = true; };
+
+// ---- what goes wrong on a tester's device, in the playground's log ----------------------------------------------------
+// A phone has no console to read (the user, 2026-10-20: "the game doesn't seem to work on safari or chrome when launched
+// from my phone"). An error on the page, and what EmulatorJS warns or errs, is posted to the server, which writes it in
+// its log beside the device's address -- with the browser, once a visit. At most 30 a visit.
+let told = 0;
+function tell(kind, what) {
+  if (told >= 30) return;
+  const text = what && (what.stack || what.message) ? String(what.stack || what.message)
+    : typeof what === "string" ? what : (() => { try { return JSON.stringify(what); } catch { return String(what); } })();
+  const head = told++ ? "" : navigator.userAgent + " · ";
+  try {
+    fetch("client-log", { method: "POST", keepalive: true, headers: { "content-type": "text/plain" },
+                          body: `${head}${game ? game.base : "chooser"} · ${kind} · ${text}`.slice(0, 2000) }).catch(() => {});
+  } catch { /* nothing to tell it with */ }
+}
+addEventListener("error", (e) => tell("error", e.error || e.message));
+addEventListener("unhandledrejection", (e) => tell("rejection", e.reason));
+for (const level of ["error", "warn"]) {
+  const said = console[level].bind(console);
+  console[level] = (...args) => { said(...args); tell(level, args.map((a) => (a && a.message) || String(a)).join(" ")); };
+}
+
+// ---- the game's sound, on a phone ---------------------------------------------------------------------------------------
+// iOS lets a page's sound start only inside a tap, and the game starts seconds after the tap on PLAY -- the core and the
+// ROM are still downloading. So on an iPhone the sound starts suspended, and EmulatorJS covers the game with "Click to
+// resume Emulator" until it runs (its checkStarted, Safari on a phone only) -- but it leaves the resuming to the core,
+// which listens for touchstart, a touch iOS does not count. Any tap, click or key resumes it here, inside the gesture.
+function soundContext() {
+  const al = window.EJS_emulator && window.EJS_emulator.Module && window.EJS_emulator.Module.AL;
+  return al && al.currentCtx && al.currentCtx.audioCtx;
+}
+function resumeSound() {
+  const ctx = soundContext();
+  if (!ctx || ctx.state === "running") return;
+  const was = ctx.state, f0 = frames();
+  ctx.resume().catch(() => {});
+  if (!toldTap) {                                // once a visit: whether a tap is what this device needed
+    toldTap = true;
+    setTimeout(() => tell("tap", `sound ${was} -> ${ctx.state}, ${frames() - f0} frames in 2 s`), 2000);
+  }
+}
+let toldTap = false;
+for (const ev of ["touchend", "click", "keydown"]) document.addEventListener(ev, resumeSound, true);
+function frames() { try { return window.EJS_emulator.gameManager.getFrameNum(); } catch { return 0; } }
+// "TAP TO PLAY" over the game while it should be running and its sound is not -- the core waits on its sound, so the
+// game stands still until then. On a computer the sound runs from the PLAY press, and this never shows.
+function soundWatch() {
+  const emu = window.EJS_emulator, ctx = soundContext();
+  $("tap-to-play").hidden = !(emu && !emu.paused && ctx && ctx.state !== "running" && !$("kept").open);
+}
+$("tap-to-play").onclick = resumeSound;
 
 let toastTimer = 0;
 function toast(text, ms = 4000) {

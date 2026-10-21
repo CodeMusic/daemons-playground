@@ -115,6 +115,18 @@ those two folders from it as well; nothing of the playground's own lives there.
 If the playground cannot export the site at all (no `npm install` in `app/`, no Node 24) and has never exported it, the
 tab falls back to that dev server on the page's own host, port 8081, and says why when nothing answers there.
 
+## On a phone
+
+An iPhone (Safari and Chrome alike) starts a page's sound only inside a tap, and the game starts a few seconds after the
+tap on PLAY, once the emulator and the ROM have arrived. Its sound then waits, and the emulator waits on its sound, so
+the screen stays blank: the page puts **TAP TO PLAY** over the game, and that tap starts it. The same comes back if the
+phone interrupts the sound later (a call, the lock screen). On a computer the sound runs from the PLAY press, and it
+never shows.
+
+**What goes wrong on a tester's device is in the playground's log** beside its address -- the page's errors, what
+EmulatorJS warns of, and a line as each game starts (`N frames in 5 s, sound running`) -- since a phone has no console
+to read.
+
 ## Keys
 
 Arrows move, **X** is A, **Z** is B (as in mGBA: EmulatorJS's own default is the other way round), **Enter** START,

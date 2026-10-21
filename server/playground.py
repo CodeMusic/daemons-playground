@@ -520,7 +520,24 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self.json({"reset": m[1]})
         if path.startswith("/companion/"):
             return self.proxy()
+        if path == "/client-log":
+            return self.client_log()
         self.send_error(404)
+
+    def client_log(self):
+        """What went wrong on a tester's device (the page's errors, EmulatorJS's warnings), written in this log beside
+        its address: a phone has no console to read. A line of printable text, 2000 characters at most."""
+        try:
+            n = min(int(self.headers.get("Content-Length") or 0), 4096)
+        except ValueError:
+            n = 0
+        text = self.rfile.read(n).decode("utf-8", "replace") if n > 0 else ""
+        text = re.sub(r"[^\x20-\x7e\u00a0-\uffff]+", " ", text)[:2000]
+        if text:
+            sys.stderr.write(f"playground: {self.client_address[0]} says: {text}\n")
+        self.send_response(204)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def put_save(self, base):
         """The browser's save of a build, for its companion to read: written whole, or with no body, put aside (a new
