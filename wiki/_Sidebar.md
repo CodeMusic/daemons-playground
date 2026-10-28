@@ -8,6 +8,7 @@
 - [Playing on a phone](Playing-on-a-phone)
 
 **Elsewhere**
+- [The player's manual](https://github.com/CodeMusic/DAEMONS/blob/main/docs/DAEMONS-manual.pdf) (PDF)
 - [README](https://github.com/CodeMusic/daemons-playground/blob/main/README.md)
 - [DAEMONS wiki](https://github.com/CodeMusic/DAEMONS/wiki)
 - [Companion wiki](https://github.com/CodeMusic/daemons-companion/wiki)

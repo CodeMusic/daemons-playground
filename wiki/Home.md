@@ -8,6 +8,8 @@ with the daemons you SEND, each release's notes, and help.
 It is the browser's way into what the companion's app does on an iPhone or iPad: the game and the companion together.
 ([The one app](https://github.com/CodeMusic/daemons-companion/wiki/The-one-app), on the companion's wiki.)
 
+New to the game itself? **[The player's manual](https://github.com/CodeMusic/DAEMONS/blob/main/docs/DAEMONS-manual.pdf)** (PDF) tells how to play it.
+
 ## Every page
 
 | page | what it covers |
