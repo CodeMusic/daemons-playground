@@ -10,7 +10,7 @@ on the screen. Beside the game:
 - **COMPANION**: [daemons-companion](https://github.com/CodeMusic/daemons-companion)'s site in a tab, the daemon you
   carry, its care, the routines and the CASINO -- on **a companion of the playground's own**, fed the game you are
   playing. **SEND** a daemon in the game, open the tab, and it is there. The game pauses while you look.
-- **WHAT'S NEW**: each release's notes, newest first, every engine and design change linked to its commit. If a newer
+- **WHAT'S NEW**: each release's notes (the last twelve), newest first, every engine and design change linked to its commit. If a newer
   release lands while you play, the page says so.
 - **HELP**: how to play, how to use the companion (SEND, SYNC, care, CALL HOME), and where else a daemon can live --
   the companion's iPhone app and the LilyGO and M5Stack boards. It is on the start page too.
@@ -18,6 +18,14 @@ on the screen. Beside the game:
   last one in your browser and offers it the next time you come back.
 
 It always serves the **newest release**: the ROMs are read from DAEMONS' `ROM RELEASE/` each time a game starts.
+
+It is the browser's side of what [the companion's one app](https://github.com/CodeMusic/daemons-companion/wiki/The-one-app)
+does on an iPhone or iPad -- the game and the companion together -- for anyone on your network, with nothing to install.
+
+**Every page of how it works: [the playground's wiki](https://github.com/CodeMusic/daemons-playground/wiki).** The
+game itself, its editions and its releases: [the DAEMONS wiki](https://github.com/CodeMusic/DAEMONS/wiki). To play
+DAEMONS on your own hardware instead, each DAEMONS release publishes patches for your own cartridge's game
+([Releases](https://github.com/CodeMusic/DAEMONS/wiki/Releases)).
 
 ## Running it
 
