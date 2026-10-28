@@ -48,6 +48,8 @@ companion needs daemons-companion beside DAEMONS (DAEMONS' `setup.sh` links it a
 | `./bindPlayground.sh --companion URL` | the COMPANION tab's site, instead of the playground's own export of it: `http://localhost:8081/` is the Expo dev server's (`./companion/bindCompanion.sh app`), to work on the companion and see it at once |
 | `./bindPlayground.sh --no-companion` | no companion of the playground's own: the tab shows the site on its own server |
 | `./bindPlayground.sh --companion-port 4731` | the first of the four companions' ports |
+| `./bindPlayground.sh always` | keep it running: a login agent starts it at login and again if it stops, its output in `data/playground.log` (it does not keep the Mac awake) |
+| `./bindPlayground.sh never` | stop doing that |
 | `DAEMONS_ROOT=/path/to/DAEMONS` | DAEMONS somewhere other than beside this repository |
 | `COMPANION_ROOT=/path/to/daemons-companion` | the companion somewhere other than `DAEMONS/companion` |
 
