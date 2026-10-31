@@ -231,7 +231,10 @@ class Companions:
         cfg = {"port": self.ports[build], "host": "127.0.0.1", "database": os.path.join(home, "companion.sqlite"),
                "edition": "CONTEXT" if build.startswith("context") else "CONTENT",
                "savePath": save_path(BUILDS[build]), "artDir": os.path.join(DAEMONS, "gfx", "daemons"),
-               "ai": {"enabled": False}, "talk": {"url": None}}
+               "ai": {"enabled": False}, "talk": {"url": None},
+               # the page SYNCs as COMPANION opens and puts the save back into the game; the companion's own watcher
+               # (daemons-companion C-261) SYNCing behind it would be undone by the game's next save
+               "watchSave": False}
         path = os.path.join(home, "config.json")
         with open(path + ".tmp", "w") as f:
             json.dump(cfg, f, indent=2)
