@@ -1,8 +1,9 @@
 # daemons-playground
 
 **An all-in-one harness to demo and beta test [DAEMONS](https://github.com/CodeMusic/DAEMONS)**, the whole game and
-everything around it, from one URL. New to the game itself? **[The player's manual](https://github.com/CodeMusic/DAEMONS/blob/main/docs/DAEMONS-manual.pdf)** (PDF) has
-every way to play, the world, the daemons, the companion and a glossary.
+everything around it, from one URL. New to the game itself? **[QUICK START](https://github.com/CodeMusic/DAEMONS/blob/main/docs/DAEMONS-quickstart.pdf)** (PDF) is a short guide
+in large type, and **[the player's manual](https://github.com/CodeMusic/DAEMONS/blob/main/docs/DAEMONS-manual.pdf)** (PDF) has every way to play, the world, the daemons, the
+companion and a glossary.
 
 Open the page, choose **CONTENT** or **CONTEXT** (and the **DEBUG** build, if you want its kit), start a new game or
 continue from a `.sav`, and play it right there in the browser: on a Mac with the keyboard, on a phone with the buttons
