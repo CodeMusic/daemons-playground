@@ -4,6 +4,7 @@
 everything around it, from one URL. New to the game itself? **[MICRO-START](https://github.com/CodeMusic/DAEMONS/blob/main/docs/DAEMONS-microstart.pdf)** (PDF) is five pages,
 **[QUICK-START](https://github.com/CodeMusic/DAEMONS/blob/main/docs/DAEMONS-quickstart.pdf)** (PDF) 25 in large type, and **[the player's manual](https://github.com/CodeMusic/DAEMONS/blob/main/docs/DAEMONS-manual.pdf)** (PDF) has every way to play, the world, the daemons, the
 companion and a glossary. **Why the name? [THE OLD WORD](https://github.com/CodeMusic/DAEMONS/blob/main/docs/DAEMONS-etymology.pdf)** (PDF) tells how the Greek *daimon* branched, and why it is said *DAY-mons*.
+**From CALLOW SCHOOL: [PRINCIPLES OF MIND](https://github.com/CodeMusic/DAEMONS/blob/main/docs/DAEMONS-textbook.pdf)** (82 pages), its TEXTBOOK written out as a university textbook -- seven floors, Language to Error, each taught from the research.
 
 Open the page, choose **CONTENT** or **CONTEXT** (and the **DEBUG** build, if you want its kit), start a new game or
 continue from a `.sav`, and play it right there in the browser: on a Mac with the keyboard, on a phone with the buttons
