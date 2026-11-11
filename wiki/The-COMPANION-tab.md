@@ -36,13 +36,15 @@ Assistant, the save's path) is refused there.
 ## The site it shows
 
 The playground **exports the companion's site itself** (`npx expo export --platform web`, with Node 24) into
-`data/companion-site/`, and serves it at `/companion-site/`. So the tab needs no Expo dev server, and a phone loads one
-minified bundle of about 2 MB, once.
+`data/companion-site/`, and serves it at `/companion-site/`. It exports what the companion has **committed**, never what
+is only in its working tree: its `app/`, `server/src` and `server/data` at its HEAD, taken with `git archive` into
+`data/companion-src/`. So the tab needs no Expo dev server, and a phone loads one minified bundle of about 2 MB, once.
 
-It is exported again only when the companion has changed -- its commit, or anything uncommitted in its `app/`,
-`server/src` or `server/data`. The playground looks as it starts and, at most every 30 seconds, as pages ask. The export
-runs in the background (a few seconds once Metro's cache is warm, about a minute the first time), and the one before is
-served until it is done. One that fails keeps the one before, and is not tried again until the companion changes.
+It is exported again only when the companion's HEAD moves: a new commit. A change half-made in the companion's working
+tree is not seen, and cannot break the export. The playground looks as it starts and, at most every 30 seconds, as pages
+ask. The export runs in the background (a few seconds once Metro's cache is warm, about a minute the first time), and
+the one before is served until it is done. One that fails keeps the one before, and is not tried again until the
+companion's HEAD moves.
 
-**To work on the companion's site** and see each change at once, run its Expo dev server
+**To work on the companion's site** and see each change at once, uncommitted ones too, run its Expo dev server
 (`./companion/bindCompanion.sh app` from DAEMONS) and start the playground with `--companion http://localhost:8081/`.

@@ -38,5 +38,6 @@ way: the ROMs run Nintendo's engine, and the playground exists to show the game 
 ## Its files
 
 `data/` is ignored by git and is this machine's alone: the saves the browser posts (`data/saves/`), the companions'
-databases (`data/companions/`), the export of the companion's site (`data/companion-site/`) and its log (`data/companion-site.log`), and each
+databases (`data/companions/`), the export of the companion's site (`data/companion-site/`), the commit it was made from
+(`data/companion-src/`) and its log (`data/companion-site.log`), and each
 companion's own log (`data/companions/<build>/server.log`).

@@ -107,23 +107,27 @@ different build, or a playground of their own.
 
 ## The companion's site
 
-The COMPANION tab shows daemons-companion's own site, **exported by the playground and served by it**: as it starts,
-it runs `npx expo export --platform web` in `DAEMONS/companion/app` (with Node 24) into `data/companion-site/`, and the
-tab opens it at `/companion-site/` on the playground's own address, told by `?server=` to use the playground's
-companion. So the tab needs no Expo dev server, and a phone on the tailnet loads one minified bundle (about 2 MB, once:
-its name changes with what is in it) instead of a development build.
+The COMPANION tab shows daemons-companion's own site, **exported by the playground and served by it**: as it starts, it
+takes the companion's `app/`, `server/src` and `server/data` as committed at its HEAD (`git archive`, into
+`data/companion-src/`, with the app's `node_modules` linked from `DAEMONS/companion/app`), runs
+`npx expo export --platform web` there (with Node 24) into `data/companion-site/`, and the tab opens it at
+`/companion-site/` on the playground's own address, told by `?server=` to use the playground's companion. So the tab
+needs no Expo dev server, and a phone on the tailnet loads one minified bundle (about 2 MB, once: its name changes with
+what is in it) instead of a development build.
 
-It is exported again only when the companion has changed since the last export -- its HEAD, or anything uncommitted
-in its `app/`, `server/src` or `server/data`, which the site is built from. The playground looks as it starts and,
-at most every 30 seconds, as pages ask after it; the export runs in the background (a few seconds once Metro's cache
-is warm, about a minute the first time) and the one before is served until it is done. The commit it was made from is
-in `data/companion-site.json`, the export's output in `data/companion-site.log`. An export that fails keeps the one before, and is not tried again until the companion
-changes.
+It is exported again only when the companion's HEAD has moved since the last export: a new commit. **What is not
+committed never reaches it.** The companion's working tree is often mid-change -- on 2026-11-11 a screen imported a file
+not yet written, and an export made from the working tree failed -- so testers see only what has been committed, and a
+change half-made cannot break the export. The playground looks as it starts and, at most every 30 seconds, as pages ask
+after it; the export runs in the background (a few seconds once Metro's cache is warm, about a minute the first time)
+and the one before is served until it is done. The commit it was made from is in `data/companion-site.json`, the
+export's output in `data/companion-site.log`. An export that fails keeps the one before, and is not tried again until
+the companion's HEAD moves.
 
 The export names its files from the root (`/_expo/…`, `/assets/…`: the app sets no `baseUrl`), so the playground serves
 those two folders from it as well; nothing of the playground's own lives there.
 
-**To work on the companion's site** and see each change at once, run the Expo dev server
+**To work on the companion's site** and see each change at once, uncommitted ones too, run the Expo dev server
 (`./companion/bindCompanion.sh app` from DAEMONS) and start the playground with `--companion http://localhost:8081/`.
 If the playground cannot export the site at all (no `npm install` in `app/`, no Node 24) and has never exported it, the
 tab falls back to that dev server on the page's own host, port 8081, and says why when nothing answers there.

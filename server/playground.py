@@ -23,10 +23,12 @@ tailnet uses it with no pairing -- and what only the Mac may do (pairing, its di
 is refused here. --no-companion leaves the tab on the companion site's own server, as before.
 
 THE COMPANION'S SITE IS THE PLAYGROUND'S OWN TOO: a static web export of daemons-companion's app (expo export --platform
-web, into data/companion-site/), made as this starts and again whenever the companion's HEAD or what is uncommitted in
-its app/, server/src or server/data has changed since the last one, and served from here -- /companion-site/, the page's
-own origin, so the tab needs no Expo dev server and a phone loads one minified bundle. The export names its files from
-the root (/_expo/..., /assets/...; its app.json sets no baseUrl), and this site has neither, so they are served there.
+web, into data/companion-site/), made as this starts and again whenever the companion's HEAD has moved since the last
+one -- from what is committed there alone (its app/, server/src and server/data at that commit, taken with git archive
+into data/companion-src/), never from what a session has half-written in the shared checkout -- and served from here --
+/companion-site/, the page's own origin, so the tab needs no Expo dev server and a phone loads one minified bundle. The
+export names its files from the root (/_expo/..., /assets/...; its app.json sets no baseUrl), and this site has neither,
+so they are served there.
 --companion URL shows another site instead (the Expo dev server's, http://localhost:8081/, to work on the companion);
 with no export to be had -- no app installed, no Node, or the export failed -- the tab falls back to this host's 8081.
 
@@ -296,6 +298,7 @@ class Companions:
 
 
 SITE_EXPORT = os.path.join(DATA, "companion-site")   # the companion's site, exported; .json beside it says from what
+SITE_SRC = os.path.join(DATA, "companion-src")       # what the last export was made from: the companion as committed
 SITE_PREFIX = "/companion-site"
 SITE_ROOTS = ("/_expo/", "/assets/")                  # what the export names from the root: this site has neither
 
@@ -303,11 +306,13 @@ SITE_ROOTS = ("/_expo/", "/assets/")                  # what the export names fr
 class CompanionSite:
     """daemons-companion's app as a static site (expo export --platform web) in data/companion-site/, so the COMPANION
     tab needs no Expo dev server. Exported as this starts, and again -- in the background, the old one served meanwhile
-    -- when the companion has changed since the last export: its HEAD, or anything uncommitted in what the site is built
-    from (app/, and server/src and server/data, which its Metro config reads as well). An export that failed is not
-    tried again until the companion changes."""
+    -- when the companion's HEAD has moved since the last export. It is made from that commit alone: what the site is
+    built from (app/, and server/src and server/data, which its Metro config reads as well) is taken with git archive
+    into data/companion-src/, so nothing a session has left uncommitted in the shared checkout -- a screen half-written,
+    an import of a file not there yet (2026-11-11) -- reaches a beta tester or breaks the export. An export that failed
+    is not tried again until HEAD moves."""
 
-    WATCHED = ("app", "server/src", "server/data")
+    FROM = ("app", "server/src", "server/data")
 
     def __init__(self, enabled):
         self.enabled = enabled
@@ -327,29 +332,27 @@ class CompanionSite:
             return "no Node 24 (or 22.13 or later) for the companion's app: brew install node@24"
         return None
 
-    def fingerprint(self):
-        """{head, digest, dirty}: the companion's HEAD, and the size and time of everything uncommitted that the site is
-        built from -- or None when git cannot say."""
+    def head(self):
+        """The companion's HEAD, the commit an export is made from -- or None when git cannot say."""
         try:
-            git = lambda *a: subprocess.run(["git", "--no-optional-locks", "-C", COMPANION, *a], capture_output=True,
-                                            timeout=20, check=True).stdout
-            head = git("rev-parse", "HEAD").decode().strip()
-            status = git("status", "--porcelain", "-z", "--untracked-files=all", "--", *self.WATCHED)
+            return subprocess.run(["git", "--no-optional-locks", "-C", COMPANION, "rev-parse", "--verify", "HEAD^{commit}"],
+                                  capture_output=True, text=True, timeout=20, check=True).stdout.strip() or None
         except (OSError, subprocess.SubprocessError):
             return None
-        h, dirty, items = hashlib.sha1(head.encode()), False, iter(status.split(b"\0"))
-        for item in items:
-            if not item:
-                continue
-            dirty, path = True, item[3:].decode(errors="replace")
-            if item[:1] in (b"R", b"C"):
-                next(items, None)                           # a rename's old name follows it
-            try:
-                st = os.stat(os.path.join(COMPANION, path))
-                h.update(f"{item[:2]!r} {path} {st.st_size} {st.st_mtime_ns}\n".encode())
-            except OSError:
-                h.update(f"{item[:2]!r} {path} gone\n".encode())
-        return {"head": head, "digest": h.hexdigest(), "dirty": dirty}
+
+    def checkout(self, head, log):
+        """The companion as committed at head -- its app/, server/src and server/data -- in data/companion-src/, made
+        afresh with git archive, which reads the commit and nothing in the working tree. Returns its app/. The app's
+        node_modules is not committed, so the shared checkout's is linked in: its Metro config looks for packages in
+        app/node_modules only, and Metro follows the link (checked 2026-11-11)."""
+        shutil.rmtree(SITE_SRC, ignore_errors=True)         # unlinks the old node_modules link; never follows it
+        os.makedirs(SITE_SRC)
+        tar = subprocess.run(["git", "-C", COMPANION, "archive", "--format=tar", head, *self.FROM],
+                             stdout=subprocess.PIPE, stderr=log, timeout=120, check=True).stdout
+        subprocess.run(["tar", "-x", "-f", "-", "-C", SITE_SRC], input=tar, stdout=log, stderr=log, timeout=300, check=True)
+        app = os.path.join(SITE_SRC, "app")
+        os.symlink(os.path.realpath(os.path.join(COMPANION, "app", "node_modules")), os.path.join(app, "node_modules"))
+        return app
 
     def stamp(self):
         try:
@@ -374,24 +377,28 @@ class CompanionSite:
         return self.why_not() or self.failed or "not exported yet"
 
     def ensure(self):
-        """Export again, in the background, if the companion has changed since the last export (looked at once every
-        30 s at most: the page asks every two minutes, and as the COMPANION tab opens)."""
+        """Export again, in the background, if the companion's HEAD has moved since the last export (looked at once
+        every 30 s at most: the page asks every two minutes, and as the COMPANION tab opens)."""
         if self.why_not():
             return
         with self.lock:
             if self.building or time.time() - self.checked < 30:
                 return
             self.checked = time.time()
-            now = self.fingerprint()
-            if self.url() and (now is None or self.stamp().get("digest") == now["digest"]):
-                return                                      # as it was (or not a git checkout: the one there is kept)
-            if self.failed and (now and now["digest"]) == self.failed_for:
-                return                                      # failed as it is: tried again once it has changed
+            head = self.head()
+            if head is None:                                # nothing committed to export: the one there, if any, is kept
+                self.failed, self.failed_for = "git cannot say what daemons-companion has committed", None
+                return
+            made = self.stamp()
+            # one without "committed" was made in the shared checkout, before 2026-11-11, with what was uncommitted there
+            if self.url() and made.get("head") == head and made.get("committed"):
+                return                                      # as it was
+            if self.failed and head == self.failed_for:
+                return                                      # failed at this commit: tried again once HEAD has moved
             self.building = True
-        threading.Thread(target=self.build, args=(now,), daemon=True).start()
+        threading.Thread(target=self.build, args=(head,), daemon=True).start()
 
-    def build(self, now):
-        head = now["head"] if now else ""
+    def build(self, head):
         nxt, started = SITE_EXPORT + ".next", time.time()
         shutil.rmtree(nxt, ignore_errors=True)
         os.makedirs(DATA, exist_ok=True)            # a fresh clone has no data/ yet: its log could not be opened
@@ -399,12 +406,15 @@ class CompanionSite:
         # no BUILD, which is the phone's -- whatever this shell was given for the app is not passed on
         env = {k: v for k, v in os.environ.items() if k not in ("EXPO_PUBLIC_DAEMONS_SERVER", "EXPO_PUBLIC_BUILD")}
         env.update(CI="1", EXPO_NO_TELEMETRY="1", PATH=os.path.dirname(self.node) + os.pathsep + env.get("PATH", ""))
-        print(f"playground: exporting the companion's site ({head[:7] or 'not a git checkout'}"
-              f"{', with what is uncommitted' if now and now['dirty'] else ''}) -- data/companion-site.log")
+        print(f"playground: exporting the companion's site ({head[:7]}, as committed) -- data/companion-site.log")
         try:
             with open(SITE_EXPORT + ".log", "wb") as log:
+                log.write(f"playground: daemons-companion {head} as committed -- {', '.join(self.FROM)}, by git archive "
+                          f"-- in {SITE_SRC}\n".encode())
+                log.flush()                                 # before git, tar and Expo write to the same file
+                app = self.checkout(head, log)
                 r = subprocess.run([self.node, os.path.join("node_modules", "expo", "bin", "cli"), "export",
-                                    "--platform", "web", "--output-dir", nxt], cwd=os.path.join(COMPANION, "app"),
+                                    "--platform", "web", "--output-dir", nxt], cwd=app,
                                    env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, timeout=900)
             ok = r.returncode == 0 and os.path.isfile(os.path.join(nxt, "index.html"))
         except (OSError, subprocess.SubprocessError):
@@ -417,13 +427,13 @@ class CompanionSite:
             os.replace(nxt, SITE_EXPORT)
             shutil.rmtree(old, ignore_errors=True)
             with open(SITE_EXPORT + ".json.tmp", "w") as f:
-                json.dump({**(now or {}), "at": time.strftime("%Y-%m-%d %H:%M:%S")}, f, indent=2)
+                json.dump({"head": head, "committed": True, "at": time.strftime("%Y-%m-%d %H:%M:%S")}, f, indent=2)
             os.replace(SITE_EXPORT + ".json.tmp", SITE_EXPORT + ".json")
             self.failed = self.failed_for = None
             print(f"playground: the companion's site exported in {time.time() - started:.0f} s: {SITE_PREFIX}/")
         else:
             shutil.rmtree(nxt, ignore_errors=True)
-            self.failed, self.failed_for = "the export failed -- see data/companion-site.log", now and now["digest"]
+            self.failed, self.failed_for = "the export failed -- see data/companion-site.log", head
             kept = "the last export is served still" if self.url() else "the COMPANION tab falls back to port 8081"
             print(f"playground: {self.failed}; {kept}")
         self.building = False
@@ -610,7 +620,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             roms, label = find_roms(self.build, self.base)
             why = self.companions.why_not() if self.companions else "--no-companion"
             if self.site:
-                self.site.ensure()                      # made again if the companion has changed since
+                self.site.ensure()                      # made again if the companion's HEAD has moved since
             return self.json({"release": label, "editions": sorted(roms), "companion": self.companion,
                               "companions": why is None, "companionsWhy": why,
                               "companionSite": self.site and self.site.url(),
@@ -699,7 +709,7 @@ def main():
         print(f"playground: no export of the companion's site ({why}): the COMPANION tab shows this host's port 8081")
     else:
         print(f"playground: the COMPANION tab's site is its own export, at {SITE_PREFIX}/ (data/companion-site/), made "
-              "again whenever daemons-companion has changed")
+              "again whenever daemons-companion's HEAD moves, from what is committed there")
         site.ensure()
     print("playground: answering this machine, private addresses and the tailnet only. Ctrl-C stops it.")
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))

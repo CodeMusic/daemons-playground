@@ -14,8 +14,8 @@
 # a private network and the tailnet. The COMPANION tab is a companion of the playground's own, one for each build,
 # started when a game of that build first asks for it -- daemons-companion's server (DAEMONS/companion, or
 # $COMPANION_ROOT) with its own database and the browser's save, under data/. Its site is the playground's own as well:
-# exported from the companion's app (expo export, Node 24) into data/companion-site/ as this starts, and again whenever
-# the companion has changed -- no Expo dev server needed. Ctrl-C stops it and them.
+# exported from the companion's app as committed (expo export, Node 24) into data/companion-site/ as this starts, and
+# again whenever its HEAD moves -- no Expo dev server needed. Ctrl-C stops it and them.
 set -euo pipefail
 cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")")"
 case "${1:-}" in -h|--help|help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;; esac
